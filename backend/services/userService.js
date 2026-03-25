@@ -1,6 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 const { randomUUID } = require("crypto");
+const { isAdminEmail } = require("../utils/accessControl");
 
 const usersFilePath = path.join(__dirname, "..", "data", "users.json");
 
@@ -83,13 +84,15 @@ function sanitizeUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
+    role: isAdminEmail(user.email) ? "admin" : "user",
     phone: user.phone,
     address: user.address || "",
     createdAt: user.createdAt,
     maxPrice: user.maxPrice ?? null,
     maxDistance: user.maxDistance ?? null,
     notificationsEnabled: user.notificationsEnabled !== false,
-    preferredLanguage: normalizeLanguage(user.preferredLanguage)
+    preferredLanguage: normalizeLanguage(user.preferredLanguage),
+    isAdmin: isAdminEmail(user.email)
   };
 }
 

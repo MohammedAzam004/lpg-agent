@@ -3,7 +3,15 @@ const {
   sendPreferenceSummaryEmail,
   sendWelcomeEmail
 } = require("../utils/emailService");
+const { isAdminEmail } = require("../utils/accessControl");
 const { getUserProfile, registerOrLoginUser, updateUserPreferences } = require("../services/userService");
+
+function buildUserPayload(user) {
+  return {
+    user,
+    role: isAdminEmail(user?.email) ? "admin" : "user"
+  };
+}
 
 async function registerUser(request, response, next) {
   try {
@@ -22,7 +30,7 @@ async function registerUser(request, response, next) {
       success: true,
       action: result.action,
       message: result.action === "register" ? "User registered successfully." : "Login successful.",
-      user: result.user
+      ...buildUserPayload(result.user)
     });
   } catch (error) {
     console.error("[user-controller] Failed to register/login user:", error.message);
@@ -32,9 +40,10 @@ async function registerUser(request, response, next) {
 
 async function getProfile(request, response, next) {
   try {
-    const { email } = request.query;
-    console.log(`[user-controller] GET /user/profile called for ${email || "latest user"}`);
-    const user = await getUserProfile(email);
+    const requestedEmail = request.query.email;
+    const lookupEmail = request.isAdmin && requestedEmail ? requestedEmail : request.requesterEmail;
+    console.log(`[user-controller] GET /user/profile called for ${lookupEmail || "unknown user"}`);
+    const user = await getUserProfile(lookupEmail);
 
     if (!user) {
       response.status(404).json({
@@ -46,7 +55,7 @@ async function getProfile(request, response, next) {
 
     response.json({
       success: true,
-      user
+      ...buildUserPayload(user)
     });
   } catch (error) {
     console.error("[user-controller] Failed to fetch user profile:", error.message);
@@ -57,13 +66,16 @@ async function getProfile(request, response, next) {
 async function handleNotificationSettingsUpdate(request, response, next, routeLabel) {
   try {
     console.log(`[user-controller] ${routeLabel} called`);
-    const user = await updateUserPreferences(request.body);
+    const user = await updateUserPreferences({
+      ...request.body,
+      email: request.requesterEmail
+    });
     await sendPreferenceSummaryEmail(user, "updated");
 
     response.json({
       success: true,
       message: "Notification settings updated successfully.",
-      user
+      ...buildUserPayload(user)
     });
   } catch (error) {
     console.error("[user-controller] Failed to update notification settings:", error.message);

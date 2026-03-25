@@ -1,5 +1,6 @@
 const express = require("express");
 const { handleChat } = require("../controllers/chatController");
+const { requireAuthenticatedUser } = require("../utils/accessControl");
 
 const router = express.Router();
 
@@ -9,6 +10,6 @@ router.get("/", (request, response) => {
   });
 });
 
-router.post("/", handleChat);
+router.post("/", requireAuthenticatedUser, handleChat);
 
 module.exports = router;

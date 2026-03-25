@@ -169,7 +169,7 @@ function buildStoreListLines(stores) {
     return ["No LPG stores are currently marked as available."];
   }
 
-  return stores.slice(0, 5).map((store, index) => (
+  return stores.map((store, index) => (
     `${index + 1}. ${store.name} - ${store.city || store.location}, Rs. ${store.price}, ${store.distance} km away`
   ));
 }
@@ -192,21 +192,58 @@ function buildSmartAlertLines(alerts = []) {
   });
 }
 
-async function sendAvailabilityEmail(store) {
-  const stockCount = formatStockCount(store);
+function buildAvailabilityDigestLines(stores = []) {
+  if (!stores.length) {
+    return ["No newly available LPG stores were detected in this cycle."];
+  }
+
+  return stores.map((store, index) => (
+    `${index + 1}. ${store.name} - ${store.city || store.location}, Rs. ${store.price}, stock ${formatStockCount(store)}`
+  ));
+}
+
+function buildRequestMatchLines(matches = []) {
+  if (!matches.length) {
+    return [];
+  }
+
+  return matches.map((match, index) => (
+    `${index + 1}. ${match.store.name} - ${[match.store.city, match.store.state].filter(Boolean).join(", ") || match.store.location}, Rs. ${match.store.price}, ${match.store.distance} km`
+  ));
+}
+
+function appendSection(lines, title, sectionLines) {
+  if (!sectionLines.length) {
+    return;
+  }
+
+  lines.push(title);
+  lines.push(...sectionLines);
+  lines.push("");
+}
+
+async function sendAvailabilityDigestEmail(stores) {
+  if (!stores.length) {
+    console.log("[email] Skipping system availability digest because there are no matching stores.");
+    return { skipped: true, mode: "no-content" };
+  }
 
   return dispatchEmail({
     recipients: getSystemAlertRecipient(),
     subject: "LPG Available Alert",
     text: [
-      `Store Name: ${store.name}`,
-      `City: ${store.city || store.location || "Not specified"}`,
-      `Price: Rs. ${store.price}`,
-      `Availability: ${formatAvailability(store)}`,
-      `Stock Count: ${stockCount}`
+      "The following LPG stores became available in this cycle:",
+      "",
+      ...buildAvailabilityDigestLines(stores),
+      "",
+      "- LPG Smart System"
     ].join("\n"),
-    label: `availability alert for ${store.name}`
+    label: "system availability digest"
   });
+}
+
+async function sendAvailabilityEmail(store) {
+  return sendAvailabilityDigestEmail(store ? [store] : []);
 }
 
 async function sendStockAvailabilityEmail(user, store) {
@@ -360,7 +397,47 @@ async function sendRequestedLpgAvailableEmail(user, request, store) {
   });
 }
 
+async function sendUserLpgDigestEmail(user, summary = {}) {
+  const copy = getLanguageCopy(user.preferredLanguage);
+  const restockLines = buildAvailabilityDigestLines(summary.restockStores || []);
+  const preferredStoreLines = buildStoreListLines(summary.availableStores || []);
+  const smartAlertLines = buildSmartAlertLines(summary.smartAlerts || []);
+  const requestMatchLines = buildRequestMatchLines(summary.requestMatches || []);
+  const recommendationLine = summary.recommendation
+    ? `${copy.periodicRecommendationPrefix} ${summary.recommendation.name} - Rs. ${summary.recommendation.price} in ${summary.recommendation.location}, ${summary.recommendation.city || summary.recommendation.state}`
+    : `${copy.periodicRecommendationPrefix} No recommendation available right now.`;
+
+  const lines = [
+    copy.periodicGreeting(user.name),
+    "",
+    copy.periodicIntro,
+    ""
+  ];
+
+  appendSection(lines, "Stores back in stock:", summary.restockStores?.length ? restockLines : []);
+  appendSection(lines, copy.periodicStoresLabel, summary.availableStores?.length ? preferredStoreLines : []);
+  appendSection(lines, "Smart alerts:", summary.smartAlerts?.length ? smartAlertLines : []);
+  appendSection(lines, "Requested stores now available:", summary.requestMatches?.length ? requestMatchLines : []);
+
+  lines.push(recommendationLine);
+
+  if (summary.recommendation?.prediction) {
+    lines.push(`${copy.periodicPredictionPrefix} ${summary.recommendation.prediction}`);
+  }
+
+  lines.push("");
+  lines.push(...copy.periodicFooter);
+
+  return dispatchEmail({
+    recipients: user.email,
+    subject: copy.periodicSubject,
+    text: lines.join("\n"),
+    label: `combined LPG digest for ${user.email}`
+  });
+}
+
 module.exports = {
+  sendAvailabilityDigestEmail,
   sendAvailabilityEmail,
   sendLoginGreetingEmail,
   sendPeriodicUpdateEmail,
@@ -368,5 +445,6 @@ module.exports = {
   sendRequestedLpgAvailableEmail,
   sendStockAvailabilityEmail,
   sendSmartNotificationEmail,
+  sendUserLpgDigestEmail,
   sendWelcomeEmail
 };

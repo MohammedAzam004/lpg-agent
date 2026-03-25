@@ -1,16 +1,28 @@
-// Production fallback points to the deployed Render backend when Vercel envs are missing.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://lpg-agent.onrender.com";
+const DEFAULT_DEPLOYED_API_BASE_URL = "https://lpg-agent.onrender.com";
+
+// The deployed Render backend is the safe default. Local development can still override this with VITE_API_BASE_URL.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || DEFAULT_DEPLOYED_API_BASE_URL;
 
 async function fetchJson(endpoint, options = {}) {
-  const { userMessage = "", ...fetchOptions } = options;
+  const { userMessage = "", userEmail = "", headers = {}, ...fetchOptions } = options;
   let response;
   const requestUrl = `${API_BASE_URL}${endpoint}`;
+  const isFormDataBody = typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+  const requestHeaders = {
+    ...headers
+  };
+
+  if (!isFormDataBody) {
+    requestHeaders["Content-Type"] = "application/json";
+  }
+
+  if (userEmail) {
+    requestHeaders["x-user-email"] = userEmail;
+  }
 
   try {
     response = await fetch(requestUrl, {
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: requestHeaders,
       ...fetchOptions
     });
   } catch (error) {
@@ -90,6 +102,7 @@ export async function registerOrLoginUser(profile) {
 export async function fetchUserProfile(email) {
   const suffix = email ? `?email=${encodeURIComponent(email)}` : "";
   const payload = await fetchJson(`/user/profile${suffix}`, {
+    userEmail: email,
     userMessage: "Unable to connect to server. Please try again."
   });
   return payload?.user ?? null;
@@ -98,6 +111,7 @@ export async function fetchUserProfile(email) {
 export async function updateUserProfile(profile) {
   const payload = await fetchJson("/user/preferences", {
     method: "POST",
+    userEmail: profile?.email,
     userMessage: "Unable to connect to server. Please try again.",
     body: JSON.stringify(profile)
   });
@@ -105,35 +119,54 @@ export async function updateUserProfile(profile) {
   return payload?.user ?? null;
 }
 
-export async function createStoreRecord(store) {
+export async function createStoreRecord(store, userEmail) {
   const payload = await fetchJson("/stores", {
     method: "POST",
+    userEmail,
     body: JSON.stringify(store)
   });
 
   return payload?.store ?? null;
 }
 
-export async function updateStoreRecord(id, store) {
+export async function updateStoreRecord(id, store, userEmail) {
   const payload = await fetchJson(`/stores/${id}`, {
     method: "PUT",
+    userEmail,
     body: JSON.stringify(store)
   });
 
   return payload?.store ?? null;
 }
 
-export async function deleteStoreRecord(id) {
+export async function deleteStoreRecord(id, userEmail) {
   const payload = await fetchJson(`/stores/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
+    userEmail
   });
 
   return payload?.store ?? null;
+}
+
+export async function importStoresFromPdf(file, userEmail) {
+  const formData = new FormData();
+
+  if (file) {
+    formData.append("file", file);
+  }
+
+  return fetchJson("/stores/import/pdf", {
+    method: "POST",
+    userEmail,
+    userMessage: "Unable to import LPG PDF data right now.",
+    body: formData
+  });
 }
 
 export async function createBooking(payload) {
   const response = await fetchJson("/bookings", {
     method: "POST",
+    userEmail: payload?.userEmail || payload?.email,
     body: JSON.stringify(payload)
   });
 
@@ -141,13 +174,17 @@ export async function createBooking(payload) {
 }
 
 export async function fetchBookingHistory(email) {
-  const payload = await fetchJson(`/bookings?email=${encodeURIComponent(email)}`);
+  const payload = await fetchJson("/bookings", {
+    userEmail: email,
+    userMessage: "Unable to connect to server. Please try again."
+  });
   return payload?.bookings ?? [];
 }
 
 export async function createRequestAlert(payload) {
   const response = await fetchJson("/request", {
     method: "POST",
+    userEmail: payload?.userEmail || payload?.email,
     userMessage: "Unable to connect to server. Please try again.",
     body: JSON.stringify(payload)
   });
@@ -156,7 +193,8 @@ export async function createRequestAlert(payload) {
 }
 
 export async function fetchRequestHistory(email) {
-  const payload = await fetchJson(`/request?email=${encodeURIComponent(email)}`, {
+  const payload = await fetchJson("/request", {
+    userEmail: email,
     userMessage: "Unable to connect to server. Please try again."
   });
 
@@ -164,16 +202,18 @@ export async function fetchRequestHistory(email) {
 }
 
 export async function deleteRequestAlert(id, email) {
-  const payload = await fetchJson(`/request/${encodeURIComponent(id)}?email=${encodeURIComponent(email)}`, {
+  const payload = await fetchJson(`/request/${encodeURIComponent(id)}`, {
     method: "DELETE",
+    userEmail: email,
     userMessage: "Unable to connect to server. Please try again."
   });
 
   return payload?.request ?? null;
 }
 
-export async function fetchAdminUsers() {
+export async function fetchAdminUsers(userEmail) {
   const payload = await fetchJson("/admin/users", {
+    userEmail,
     userMessage: "Unable to connect to server. Please try again."
   });
 
@@ -183,25 +223,28 @@ export async function fetchAdminUsers() {
   };
 }
 
-export async function fetchAdminInsights() {
+export async function fetchAdminInsights(userEmail) {
   const payload = await fetchJson("/admin/insights", {
+    userEmail,
     userMessage: "Unable to connect to server. Please try again."
   });
 
   return payload?.insights ?? null;
 }
 
-export async function deleteAdminUser(id) {
+export async function deleteAdminUser(id, userEmail) {
   const payload = await fetchJson(`/admin/user/${encodeURIComponent(id)}`, {
     method: "DELETE",
+    userEmail,
     userMessage: "Unable to connect to server. Please try again."
   });
 
   return payload?.user ?? null;
 }
 
-export async function fetchAdminRequests() {
+export async function fetchAdminRequests(userEmail) {
   const payload = await fetchJson("/admin/requests", {
+    userEmail,
     userMessage: "Unable to connect to server. Please try again."
   });
 
@@ -211,9 +254,10 @@ export async function fetchAdminRequests() {
   };
 }
 
-export async function deleteAdminRequest(id) {
+export async function deleteAdminRequest(id, userEmail) {
   const payload = await fetchJson(`/admin/request/${encodeURIComponent(id)}`, {
     method: "DELETE",
+    userEmail,
     userMessage: "Unable to connect to server. Please try again."
   });
 

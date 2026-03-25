@@ -6,8 +6,11 @@ const {
   removeRequest,
   removeUser
 } = require("../controllers/adminController");
+const { requireAdminAccess } = require("../utils/accessControl");
 
 const router = express.Router();
+
+router.use(requireAdminAccess);
 
 router.get("/insights", getInsights);
 router.get("/users", listUsers);

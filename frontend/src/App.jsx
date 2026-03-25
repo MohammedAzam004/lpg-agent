@@ -28,6 +28,7 @@ import {
   fetchStoreAnalytics,
   fetchStores,
   fetchUserProfile,
+  importStoresFromPdf,
   registerOrLoginUser,
   sendChatMessage,
   updateStoreRecord,
@@ -37,6 +38,8 @@ import {
 const USER_EMAIL_STORAGE_KEY = "lpg-smart-user-email";
 const LANGUAGE_STORAGE_KEY = "lpg-smart-language";
 const CHAT_SESSION_STORAGE_KEY = "lpg-smart-chat-session";
+const WORKSPACE_MODE_STORAGE_KEY = "lpg-smart-workspace-mode";
+const DEFAULT_ADMIN_EMAIL = "mohammedazam0004@gmail.com";
 
 const initialProfileForm = {
   name: "",
@@ -92,6 +95,10 @@ function isValidEmailFormat(email) {
 
 function isValidPhoneFormat(phone) {
   return /^\d{10}$/.test(phone.replace(/\D/g, ""));
+}
+
+function isAdminEmail(email = "") {
+  return email.toString().trim().toLowerCase() === DEFAULT_ADMIN_EMAIL;
 }
 
 function isPositiveNumberOrEmpty(value) {
@@ -162,6 +169,7 @@ function getOrCreateChatSessionId() {
 function App() {
   const [chatSessionId] = useState(() => getOrCreateChatSessionId());
   const [language, setLanguage] = useState(() => window.localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en");
+  const [workspaceMode, setWorkspaceMode] = useState(() => window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY) || "user");
   const uiText = useMemo(() => getUiText(language), [language]);
   const [locationInput, setLocationInput] = useState("");
   const [activeLocation, setActiveLocation] = useState("");
@@ -194,6 +202,7 @@ function App() {
   const [editingStoreId, setEditingStoreId] = useState(null);
   const [adminSaving, setAdminSaving] = useState(false);
   const [adminDeletingId, setAdminDeletingId] = useState(null);
+  const [adminImportingPdf, setAdminImportingPdf] = useState(false);
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminRequests, setAdminRequests] = useState([]);
   const [adminInsights, setAdminInsights] = useState(null);
@@ -210,12 +219,40 @@ function App() {
   const recognitionRef = useRef(null);
   const storeCardRefs = useRef({});
   const highlightTimeoutRef = useRef(null);
+  const isAuthenticated = Boolean(user?.email);
+  const isAdmin = Boolean(user?.isAdmin || isAdminEmail(user?.email));
+  const isAdminWorkspace = isAdmin && workspaceMode === "admin";
   const stateCount = getUniqueCount(stores, "state");
   const cityCount = getUniqueCount(stores, "city");
+  const unavailableStoresCount = stores.filter((store) => !store.availability).length;
+  const openAdminRequestsCount = adminRequests.filter((request) => request.status !== "matched").length;
 
   useEffect(() => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      if (workspaceMode !== "user") {
+        setWorkspaceMode("user");
+      }
+
+      window.localStorage.removeItem(WORKSPACE_MODE_STORAGE_KEY);
+      return;
+    }
+
+    const savedWorkspaceMode = window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY);
+
+    if (!savedWorkspaceMode) {
+      window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, "admin");
+      if (workspaceMode !== "admin") {
+        setWorkspaceMode("admin");
+      }
+      return;
+    }
+
+    window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, workspaceMode);
+  }, [isAdmin, workspaceMode]);
 
   useEffect(() => {
     if (messages.length === 1 && messages[0].id === "welcome-message") {
@@ -328,6 +365,9 @@ function App() {
           });
           setPreferenceForm(buildPreferenceForm(savedUser));
           setLanguage(savedUser.preferredLanguage || language);
+          if (savedUser.isAdmin || isAdminEmail(savedUser.email)) {
+            setWorkspaceMode(window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY) || "admin");
+          }
           setProfileNotice(
             getUiText(savedUser.preferredLanguage || language).messages.welcomeBack(savedUser.name)
           );
@@ -470,14 +510,26 @@ function App() {
     let ignore = false;
 
     async function loadAdminInsights() {
+      if (!user?.email || !isAdmin) {
+        if (!ignore) {
+          setAdminUsers([]);
+          setAdminRequests([]);
+          setAdminInsights(null);
+          setAdminUsersLoading(false);
+          setAdminRequestsLoading(false);
+          setAdminError("");
+        }
+        return;
+      }
+
       setAdminUsersLoading(true);
       setAdminRequestsLoading(true);
 
       try {
         const [usersPayload, requestsPayload, insightsPayload] = await Promise.all([
-          fetchAdminUsers(),
-          fetchAdminRequests(),
-          fetchAdminInsights()
+          fetchAdminUsers(user.email),
+          fetchAdminRequests(user.email),
+          fetchAdminInsights(user.email)
         ]);
 
         if (!ignore) {
@@ -502,7 +554,7 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [isAdmin, user?.email]);
 
   function handleProfileInputChange(event) {
     const { name, value } = event.target;
@@ -542,11 +594,18 @@ function App() {
     setTrendData(analytics);
   }
 
-  async function refreshAdminInsights() {
+  async function refreshAdminInsights(activeUser = user) {
+    if (!activeUser?.email || !(activeUser?.isAdmin || isAdminEmail(activeUser.email))) {
+      setAdminUsers([]);
+      setAdminRequests([]);
+      setAdminInsights(null);
+      return;
+    }
+
     const [usersPayload, requestsPayload, insightsPayload] = await Promise.all([
-      fetchAdminUsers(),
-      fetchAdminRequests(),
-      fetchAdminInsights()
+      fetchAdminUsers(activeUser.email),
+      fetchAdminRequests(activeUser.email),
+      fetchAdminInsights(activeUser.email)
     ]);
 
     setAdminUsers(usersPayload.users || []);
@@ -603,12 +662,18 @@ function App() {
       setPreferenceForm(buildPreferenceForm(resolvedUser));
       setLanguage(resolvedUser.preferredLanguage || language);
       window.localStorage.setItem(USER_EMAIL_STORAGE_KEY, resolvedUser.email);
+      if (resolvedUser.isAdmin || isAdminEmail(resolvedUser.email)) {
+        setWorkspaceMode("admin");
+        window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, "admin");
+      } else {
+        setWorkspaceMode("user");
+      }
       setProfileNotice(
         response?.action === "register"
           ? uiText.messages.welcomeCreated(resolvedUser.name)
           : uiText.messages.welcomeBack(resolvedUser.name)
       );
-      await refreshAdminInsights();
+      await refreshAdminInsights(resolvedUser);
     } catch (submitError) {
       setProfileError(submitError.message || uiText.messages.profileSubmitError);
     } finally {
@@ -693,7 +758,13 @@ function App() {
     setRequestFeedback(null);
     setRequestDeletingId(null);
     setNotifyPendingStoreId(null);
+    setAdminUsers([]);
+    setAdminRequests([]);
+    setAdminInsights(null);
+    setAdminError("");
+    setAdminNotice("");
     window.localStorage.removeItem(USER_EMAIL_STORAGE_KEY);
+    window.localStorage.removeItem(WORKSPACE_MODE_STORAGE_KEY);
   }
 
   function handleLocationFilterSubmit(event) {
@@ -706,9 +777,38 @@ function App() {
     setActiveLocation("");
   }
 
+  async function handleImportPdf(file) {
+    if (!isAdmin || !user?.email || adminImportingPdf) {
+      setAdminError(uiText.admin.accessDenied);
+      return;
+    }
+
+    setAdminImportingPdf(true);
+    setAdminError("");
+    setAdminNotice("");
+
+    try {
+      const importResponse = await importStoresFromPdf(file, user.email);
+      await refreshDashboard();
+      await refreshRequestHistory();
+      await refreshAdminInsights();
+      setAdminNotice(
+        importResponse?.message
+          || (uiText.admin.importSuccess ? uiText.admin.importSuccess(importResponse?.importedCount || 0) : "LPG PDF imported successfully.")
+      );
+      setEditingStoreId(null);
+      setAdminForm(initialAdminForm);
+    } catch (importError) {
+      setAdminError(importError.message || "Unable to import LPG PDF data right now.");
+      throw importError;
+    } finally {
+      setAdminImportingPdf(false);
+    }
+  }
+
   async function handleRequestStore(store) {
     if (!user?.email) {
-      setProfileError(uiText.loginToRequest);
+      setProfileError(uiText.loginRequiredPrompt);
       return;
     }
 
@@ -733,7 +833,7 @@ function App() {
 
   async function handleNotifyWhenAvailable(store) {
     if (!user?.email) {
-      setProfileError(uiText.loginToRequest);
+      setProfileError(uiText.loginRequiredPrompt);
       return;
     }
 
@@ -809,6 +909,12 @@ function App() {
 
   async function handleAdminSubmit(event) {
     event.preventDefault();
+
+    if (!isAdmin || !user?.email) {
+      setAdminError(uiText.admin.accessDenied);
+      return;
+    }
+
     setAdminSaving(true);
     setAdminError("");
     setAdminNotice("");
@@ -822,9 +928,9 @@ function App() {
       };
 
       if (editingStoreId) {
-        await updateStoreRecord(editingStoreId, payload);
+        await updateStoreRecord(editingStoreId, payload, user.email);
       } else {
-        await createStoreRecord(payload);
+        await createStoreRecord(payload, user.email);
       }
 
       await refreshDashboard();
@@ -845,6 +951,11 @@ function App() {
   }
 
   async function handleDeleteStore(store) {
+    if (!isAdmin || !user?.email) {
+      setAdminError(uiText.admin.accessDenied);
+      return;
+    }
+
     const shouldDelete = window.confirm(uiText.admin.deleteStoreConfirm(store.name));
 
     if (!shouldDelete) {
@@ -856,7 +967,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      await deleteStoreRecord(store.id);
+      await deleteStoreRecord(store.id, user.email);
       await refreshDashboard();
       await refreshRequestHistory();
       await refreshAdminInsights();
@@ -874,6 +985,11 @@ function App() {
   }
 
   async function handleDeleteAdminUser(adminUser) {
+    if (!isAdmin || !user?.email) {
+      setAdminError(uiText.admin.accessDenied);
+      return;
+    }
+
     const shouldDelete = window.confirm(uiText.admin.deleteUserConfirm(adminUser.email));
 
     if (!shouldDelete) {
@@ -885,7 +1001,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      await deleteAdminUser(adminUser.id);
+      await deleteAdminUser(adminUser.id, user.email);
       setAdminUsers((currentUsers) => currentUsers.filter((userItem) => userItem.id !== adminUser.id));
       await refreshAdminInsights();
       setAdminNotice(uiText.admin.userDeleted);
@@ -901,6 +1017,11 @@ function App() {
   }
 
   async function handleDeleteAdminRequest(adminRequest) {
+    if (!isAdmin || !user?.email) {
+      setAdminError(uiText.admin.accessDenied);
+      return;
+    }
+
     const shouldDelete = window.confirm(uiText.admin.deleteRequestConfirm);
 
     if (!shouldDelete) {
@@ -912,7 +1033,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      await deleteAdminRequest(adminRequest.id);
+      await deleteAdminRequest(adminRequest.id, user.email);
       setAdminRequests((currentRequests) => currentRequests.filter((requestItem) => requestItem.id !== adminRequest.id));
       await refreshAdminInsights();
       setAdminNotice(uiText.admin.requestDeleted);
@@ -931,6 +1052,11 @@ function App() {
     const trimmedMessage = message.trim();
 
     if (!trimmedMessage) {
+      return;
+    }
+
+    if (!user?.email) {
+      setProfileError(uiText.loginRequiredPrompt);
       return;
     }
 
@@ -1033,6 +1159,11 @@ function App() {
     }, 2200);
   }
 
+  function handleWorkspaceModeChange(nextMode) {
+    setWorkspaceMode(nextMode);
+    window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, nextMode);
+  }
+
   const requestStatusByStoreId = useMemo(() => (
     requestHistory.reduce((statusMap, request) => {
       if (request.storeId) {
@@ -1049,30 +1180,54 @@ function App() {
         <div className="hero-panel__content">
           <div className="hero-panel__toolbar">
             <CylinderLogo />
-            <div className="language-switch">
-              <span>{uiText.languageLabel}</span>
-              <div className="language-switch__controls">
-                <button
-                  type="button"
-                  className={language === "en" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
-                  onClick={() => setLanguage("en")}
-                >
-                  {uiText.english}
-                </button>
-                <button
-                  type="button"
-                  className={language === "hi" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
-                  onClick={() => setLanguage("hi")}
-                >
-                  {uiText.hindi}
-                </button>
-                <button
-                  type="button"
-                  className={language === "te" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
-                  onClick={() => setLanguage("te")}
-                >
-                  {uiText.telugu}
-                </button>
+            <div className="hero-panel__controls">
+              {isAdmin && isAuthenticated && (
+                <div className="workspace-switch">
+                  <span>{uiText.adminTitle}</span>
+                  <div className="workspace-switch__controls">
+                    <button
+                      type="button"
+                      className={workspaceMode === "user" ? "workspace-switch__button workspace-switch__button--active" : "workspace-switch__button"}
+                      onClick={() => handleWorkspaceModeChange("user")}
+                    >
+                      {uiText.userWorkspaceLabel || "User Workspace"}
+                    </button>
+                    <button
+                      type="button"
+                      className={workspaceMode === "admin" ? "workspace-switch__button workspace-switch__button--active" : "workspace-switch__button"}
+                      onClick={() => handleWorkspaceModeChange("admin")}
+                    >
+                      {uiText.adminPortalLabel || "Admin Portal"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="language-switch">
+                <span>{uiText.languageLabel}</span>
+                <div className="language-switch__controls">
+                  <button
+                    type="button"
+                    className={language === "en" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
+                    onClick={() => setLanguage("en")}
+                  >
+                    {uiText.english}
+                  </button>
+                  <button
+                    type="button"
+                    className={language === "hi" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
+                    onClick={() => setLanguage("hi")}
+                  >
+                    {uiText.hindi}
+                  </button>
+                  <button
+                    type="button"
+                    className={language === "te" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
+                    onClick={() => setLanguage("te")}
+                  >
+                    {uiText.telugu}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1107,6 +1262,7 @@ function App() {
       <ProfilePanel
         form={profileForm}
         user={user}
+        isAdmin={isAdmin}
         loading={profileLoading}
         error={profileError}
         notice={profileNotice}
@@ -1116,20 +1272,99 @@ function App() {
         onReset={handleProfileReset}
       />
 
-      <NotificationSettingsPanel
-        user={user}
-        settings={preferenceForm}
-        saving={preferenceSaving}
-        feedback={notificationFeedback}
-        language={language}
-        onChange={handlePreferenceChange}
-        onSubmit={handlePreferenceSubmit}
-      />
+      {!isAuthenticated && (
+        <section className="login-gate-panel">
+          <div className="banner banner--info banner--animated">
+            <strong>{uiText.loginRequiredPrompt}</strong>
+            <p>{uiText.loginRequiredCopy}</p>
+          </div>
+        </section>
+      )}
+
+      {isAuthenticated && !isAdminWorkspace && (
+          <NotificationSettingsPanel
+            user={user}
+            settings={preferenceForm}
+            saving={preferenceSaving}
+            feedback={notificationFeedback}
+            language={language}
+            onChange={handlePreferenceChange}
+            onSubmit={handlePreferenceSubmit}
+          />
+      )}
 
       {error && <div className="banner banner--error">{error}</div>}
       {adminNotice && <div className="banner banner--success banner--animated">{adminNotice}</div>}
       {adminError && <div className="banner banner--error">{adminError}</div>}
 
+      {isAdminWorkspace ? (
+        <>
+          <section className="admin-workspace-hero">
+            <div>
+              <p className="analytics-panel__eyebrow">{uiText.adminPortalLabel || "Admin Portal"}</p>
+              <h2>{uiText.admin.portalTitle || "Admin control center"}</h2>
+              <p className="admin-workspace-hero__copy">
+                {uiText.admin.portalCopy || "Manage LPG branches, imports, users, requests, and platform insights from a dedicated operations workspace."}
+              </p>
+            </div>
+            <div className="admin-workspace-hero__badge">{user?.email}</div>
+          </section>
+
+          <section className="dashboard-grid dashboard-grid--admin">
+            <article className="summary-card summary-card--admin">
+              <p className="summary-card__label">{uiText.admin.trackedStoresLabel || "Tracked Stores"}</p>
+              <h2>{dashboardLoading ? "..." : stores.length}</h2>
+              <p>{uiText.trackedCopy(activeLocation)}</p>
+            </article>
+            <article className="summary-card summary-card--admin">
+              <p className="summary-card__label">{uiText.admin.availableStoresLabel || "Available Now"}</p>
+              <h2>{dashboardLoading ? "..." : availableStores.length}</h2>
+              <p>{uiText.liveStoresCopy(activeLocation)}</p>
+            </article>
+            <article className="summary-card summary-card--admin">
+              <p className="summary-card__label">{uiText.admin.outOfStockLabel || "Out of Stock"}</p>
+              <h2>{dashboardLoading ? "..." : unavailableStoresCount}</h2>
+              <p>{stateCount} states | {cityCount} cities</p>
+            </article>
+            <article className="summary-card summary-card--admin">
+              <p className="summary-card__label">{uiText.admin.registeredUsersLabel || "Registered Users"}</p>
+              <h2>{adminUsersLoading ? "..." : adminUsers.length}</h2>
+              <p>{uiText.admin.totalUsersCount ? uiText.admin.totalUsersCount(adminUsers.length) : `${adminUsers.length} users`}</p>
+            </article>
+            <article className="summary-card summary-card--admin">
+              <p className="summary-card__label">{uiText.admin.activeRequestsLabel || "Open Requests"}</p>
+              <h2>{adminRequestsLoading ? "..." : openAdminRequestsCount}</h2>
+              <p>{uiText.admin.requestCount ? uiText.admin.requestCount(adminRequests.length) : `${adminRequests.length} requests`}</p>
+            </article>
+          </section>
+
+          <AdminPanel
+            language={language}
+            stores={stores}
+            users={adminUsers}
+            requests={adminRequests}
+            insights={adminInsights}
+            usersLoading={adminUsersLoading}
+            requestsLoading={adminRequestsLoading}
+            userDeletingId={adminUserDeletingId}
+            requestDeletingId={adminRequestDeletingId}
+            form={adminForm}
+            saving={adminSaving}
+            deletingId={adminDeletingId}
+            editingStoreId={editingStoreId}
+            importingPdf={adminImportingPdf}
+            onChange={handleAdminInputChange}
+            onImportPdf={handleImportPdf}
+            onSubmit={handleAdminSubmit}
+            onEdit={handleEditStore}
+            onDelete={handleDeleteStore}
+            onCancelEdit={handleCancelAdminEdit}
+            onDeleteUser={handleDeleteAdminUser}
+            onDeleteRequest={handleDeleteAdminRequest}
+          />
+        </>
+      ) : (
+        <>
       <section className="dashboard-grid">
         <article className="summary-card">
           <p className="summary-card__label">{uiText.summaryRecommended}</p>
@@ -1225,6 +1460,7 @@ function App() {
               className={`chat-composer__voice ${listening ? "chat-composer__voice--active" : ""}`}
               onClick={handleVoiceInput}
               aria-label={listening ? uiText.stopListening : uiText.listen}
+              disabled={!isAuthenticated}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -1239,8 +1475,9 @@ function App() {
               placeholder={uiText.typePlaceholder}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              disabled={!isAuthenticated}
             />
-            <button type="submit" className="chat-composer__send" disabled={chatLoading} aria-label={uiText.sendMessage}>
+            <button type="submit" className="chat-composer__send" disabled={chatLoading || !isAuthenticated} aria-label={uiText.sendMessage}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   d="M5 12h11M12 5l7 7-7 7"
@@ -1256,6 +1493,10 @@ function App() {
 
           {voiceSupported && listening && (
             <p className="chat-panel__listening">{uiText.listening}</p>
+          )}
+
+          {!isAuthenticated && (
+            <p className="chat-panel__listening">{uiText.loginRequiredPrompt}</p>
           )}
         </div>
 
@@ -1302,38 +1543,19 @@ function App() {
         </div>
       </section>
 
-      <AdminPanel
-        language={language}
-        stores={stores}
-        users={adminUsers}
-        requests={adminRequests}
-        insights={adminInsights}
-        usersLoading={adminUsersLoading}
-        requestsLoading={adminRequestsLoading}
-        userDeletingId={adminUserDeletingId}
-        requestDeletingId={adminRequestDeletingId}
-        form={adminForm}
-        saving={adminSaving}
-        deletingId={adminDeletingId}
-        editingStoreId={editingStoreId}
-        onChange={handleAdminInputChange}
-        onSubmit={handleAdminSubmit}
-        onEdit={handleEditStore}
-        onDelete={handleDeleteStore}
-        onCancelEdit={handleCancelAdminEdit}
-        onDeleteUser={handleDeleteAdminUser}
-        onDeleteRequest={handleDeleteAdminRequest}
-      />
-
-      <RequestHistoryPanel
-        user={user}
-        loading={requestHistoryLoading}
-        deletingId={requestDeletingId}
-        requests={requestHistory}
-        feedback={requestFeedback}
-        language={language}
-        onRemove={handleRemoveRequest}
-      />
+      {isAuthenticated && (
+          <RequestHistoryPanel
+            user={user}
+            loading={requestHistoryLoading}
+            deletingId={requestDeletingId}
+            requests={requestHistory}
+            feedback={requestFeedback}
+            language={language}
+            onRemove={handleRemoveRequest}
+          />
+      )}
+        </>
+      )}
     </main>
   );
 }

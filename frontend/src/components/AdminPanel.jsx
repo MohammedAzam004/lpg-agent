@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { getUiText } from "../i18n";
 
 function formatDate(value, language = "en") {
@@ -40,7 +41,9 @@ function AdminPanel({
   saving = false,
   deletingId = null,
   editingStoreId = null,
+  importingPdf = false,
   onChange,
+  onImportPdf,
   onSubmit,
   onEdit,
   onDelete,
@@ -49,6 +52,27 @@ function AdminPanel({
   onDeleteRequest
 }) {
   const text = getUiText(language);
+  const [selectedPdfFile, setSelectedPdfFile] = useState(null);
+  const fileInputRef = useRef(null);
+
+  async function handleImportSubmit(event) {
+    event.preventDefault();
+
+    if (typeof onImportPdf !== "function") {
+      return;
+    }
+
+    try {
+      await onImportPdf(selectedPdfFile);
+      setSelectedPdfFile(null);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error) {
+      // The parent panel already exposes the import error to the user.
+    }
+  }
 
   return (
     <section className="admin-panel">
@@ -73,6 +97,33 @@ function AdminPanel({
 
       <div className="admin-panel__grid">
         <form className="admin-panel__form" onSubmit={onSubmit}>
+          <div className="admin-panel__import">
+            <div className="admin-panel__import-copy">
+              <p className="analytics-panel__eyebrow">{text.admin.importEyebrow || "PDF Import"}</p>
+              <h3>{text.admin.importTitle || "Import LPG data from PDF"}</h3>
+              <p>{text.admin.importHint || "Upload Data.pdf or let the backend read a project-root Data.pdf file."}</p>
+            </div>
+
+            <div className="admin-panel__import-form">
+              <label className="admin-panel__file-field">
+                <span>{selectedPdfFile?.name || (text.admin.importFilePlaceholder || "Choose a PDF file")}</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={(event) => setSelectedPdfFile(event.target.files?.[0] || null)}
+                />
+              </label>
+              <button type="button" className="profile-panel__submit" disabled={importingPdf} onClick={handleImportSubmit}>
+                {importingPdf
+                  ? (text.admin.importingPdf || "Importing...")
+                  : selectedPdfFile
+                    ? (text.admin.importPdf || "Import PDF")
+                    : (text.admin.importDefaultPdf || "Import Data.pdf")}
+              </button>
+            </div>
+          </div>
+
           <div className="admin-panel__form-grid">
             <label>
               <span>{text.form.state}</span>

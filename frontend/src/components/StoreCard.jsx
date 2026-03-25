@@ -44,9 +44,11 @@ function StoreCard({
       : text.unavailable;
   const showBookingButton = store.availability && typeof onRequest === "function";
   const showNotifyButton = !store.availability && typeof onNotify === "function";
+  const showMapButton = Number.isFinite(Number(store.latitude)) && Number.isFinite(Number(store.longitude));
   const hasExistingNotifyRequest = Boolean(notifyStatus);
   const isInteractive = typeof onSelect === "function";
   const notifyLabel = hasExistingNotifyRequest ? text.alreadyRequested : text.notifyWhenAvailable;
+  const shouldRenderFooter = showBookingButton || showNotifyButton || showMapButton;
 
   function handleCardClick() {
     if (isInteractive) {
@@ -63,6 +65,12 @@ function StoreCard({
       event.preventDefault();
       onSelect(store);
     }
+  }
+
+  function handleOpenMap(event) {
+    const mapUrl = `https://www.google.com/maps?q=${store.latitude},${store.longitude}`;
+    event.stopPropagation();
+    window.open(mapUrl, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -116,7 +124,7 @@ function StoreCard({
       </p>
       {store.prediction && <p className="store-card__prediction">{store.prediction}</p>}
 
-      {(showBookingButton || showNotifyButton) && (
+      {shouldRenderFooter && (
         <div className="store-card__footer">
           {showBookingButton && (
             <button
@@ -143,6 +151,18 @@ function StoreCard({
               disabled={notifyLoading || hasExistingNotifyRequest}
             >
               {notifyLoading ? text.saving : notifyLabel}
+            </button>
+          )}
+
+          {showMapButton && (
+            <button
+              type="button"
+              className="store-card__action store-card__action--map"
+              onClick={handleOpenMap}
+              aria-label={text.mapLocationLabel ? text.mapLocationLabel(store.name) : `Open ${store.name} in Google Maps`}
+            >
+              <span aria-hidden="true">📍</span>
+              <span>{text.viewOnMap || "View on Map"}</span>
             </button>
           )}
         </div>

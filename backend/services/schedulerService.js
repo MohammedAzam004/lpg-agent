@@ -8,9 +8,9 @@ const {
 const { runImmediateRequestNotificationAgent, runNotificationAgent } = require("./agents/orchestrator");
 
 // TEST MODE: set SCHEDULER_TEST_MODE=false to revert to the production schedule below.
-const TEST_MODE = process.env.SCHEDULER_TEST_MODE !== "false";
+const TEST_MODE = process.env.SCHEDULER_TEST_MODE === "true";
 const TEST_CRON_EXPRESSION = "*/30 * * * * *";
-const PRODUCTION_CRON_EXPRESSION = "0 * * * *";
+const PRODUCTION_CRON_EXPRESSION = "0 */2 * * *";
 
 function logAvailabilityChanges(stores) {
   if (!stores.length) {
@@ -30,7 +30,7 @@ function getCurrentlyAvailableStores(stores) {
 }
 
 async function processImmediateRequestNotifications() {
-  console.log("[scheduler] Checking request notifications after store update...");
+  console.log("[scheduler] Immediate request notifications are disabled. Waiting for the next 2-hour digest cycle.");
   const [previousStores, currentStores] = await Promise.all([getPreviousStores(), getStores()]);
   await runImmediateRequestNotificationAgent(previousStores, currentStores);
 }
@@ -73,7 +73,7 @@ async function checkAvailabilityChanges() {
   });
 
   console.log(
-    `[scheduler] Notification Agent summary: general=${notificationSummary.storesToNotifyCount}, stock=${notificationSummary.stockAlertCount}, periodic=${notificationSummary.periodicUpdateCount}, smart=${notificationSummary.smartAlertCount}, requests=${notificationSummary.requestMatchCount}`
+    `[scheduler] Notification Agent summary: systemDigest=${notificationSummary.systemDigestCount}, userDigests=${notificationSummary.userDigestCount}, stores=${notificationSummary.storesToNotifyCount}, stock=${notificationSummary.stockAlertCount}, periodic=${notificationSummary.periodicUpdateCount}, smart=${notificationSummary.smartAlertCount}, requests=${notificationSummary.requestMatchCount}`
   );
 
   await savePreviousStores(currentStores);

@@ -3,6 +3,7 @@ import { getUiText } from "../i18n";
 function ProfilePanel({
   form,
   user,
+  isAdmin = false,
   loading,
   error,
   notice,
@@ -18,7 +19,12 @@ function ProfilePanel({
       <div className="profile-panel__header">
         <div>
           <p className="profile-panel__eyebrow">{text.profile.eyebrow}</p>
-          <h2>{user ? text.profile.welcome(user.name) : text.profile.title}</h2>
+          <div className="profile-panel__title-row">
+            <h2>{user ? text.profile.welcome(user.name) : text.profile.title}</h2>
+            {user && isAdmin && (
+              <span className="profile-panel__role-badge">{text.profile.adminBadge || "Admin"}</span>
+            )}
+          </div>
           <p className="profile-panel__copy">{text.profile.copy}</p>
         </div>
         {user && (

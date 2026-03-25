@@ -8,6 +8,7 @@ const {
   getTrendAnalytics,
   updateStore
 } = require("../services/storeService");
+const { importStoresFromPdf } = require("../services/pdfImportService");
 const { processImmediateRequestNotifications } = require("../services/schedulerService");
 
 async function listStores(request, response, next) {
@@ -94,8 +95,10 @@ async function recommendStore(request, response, next) {
         `[stores] No recommendation found for location="${request.query.location || "all"}"`
       );
       response.json({
+        success: true,
         message: "No recommended LPG store found.",
-        store: null
+        store: null,
+        recommendation: null
       });
       return;
     }
@@ -103,7 +106,11 @@ async function recommendStore(request, response, next) {
     console.log(
       `[stores] Recommended store "${store.name}" for location="${request.query.location || "all"}"`
     );
-    response.json({ store });
+    response.json({
+      success: true,
+      store,
+      recommendation: store
+    });
   } catch (error) {
     console.error("[stores] Failed to recommend store:", error.message);
     next(error);
@@ -170,10 +177,26 @@ async function deleteStoreEntry(request, response, next) {
   }
 }
 
+async function importStorePdfEntry(request, response, next) {
+  try {
+    console.log(`POST /stores/import/pdf called by ${request.requesterEmail || "unknown user"}`);
+    const importSummary = await importStoresFromPdf(request.file);
+    response.status(201).json({
+      success: true,
+      message: `Imported ${importSummary.importedCount} LPG stores from ${importSummary.sourceName}.`,
+      ...importSummary
+    });
+  } catch (error) {
+    console.error("[stores] Failed to import stores from PDF:", error.message);
+    next(error);
+  }
+}
+
 module.exports = {
   createStoreEntry,
   deleteStoreEntry,
   getStoreAnalytics,
+  importStorePdfEntry,
   listAvailableStores,
   listNearbyStores,
   listStores,

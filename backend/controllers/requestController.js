@@ -3,7 +3,10 @@ const { createRequestAlert, deleteRequestAlert, getRequestHistory } = require(".
 async function createRequest(request, response, next) {
   try {
     console.log("[request-controller] POST /request called");
-    const savedRequest = await createRequestAlert(request.body);
+    const savedRequest = await createRequestAlert({
+      ...request.body,
+      userEmail: request.requesterEmail
+    });
 
     response.status(savedRequest?.duplicate ? 200 : 201).json({
       success: true,
@@ -21,7 +24,7 @@ async function createRequest(request, response, next) {
 async function listRequests(request, response, next) {
   try {
     console.log("[request-controller] GET /request called");
-    const requests = await getRequestHistory(request.query.email);
+    const requests = await getRequestHistory(request.requesterEmail);
 
     response.json({
       success: true,
@@ -36,7 +39,7 @@ async function listRequests(request, response, next) {
 async function deleteRequest(request, response, next) {
   try {
     console.log(`[request-controller] DELETE /request/${request.params.id} called`);
-    const deletedRequest = await deleteRequestAlert(request.params.id, request.query.email || request.body?.email);
+    const deletedRequest = await deleteRequestAlert(request.params.id, request.requesterEmail);
 
     response.json({
       success: true,

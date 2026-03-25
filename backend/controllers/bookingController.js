@@ -3,7 +3,10 @@ const { createBookingRequest, getBookingHistory } = require("../services/booking
 async function createBooking(request, response, next) {
   try {
     console.log("[booking-controller] POST /bookings called");
-    const booking = await createBookingRequest(request.body);
+    const booking = await createBookingRequest({
+      ...request.body,
+      userEmail: request.requesterEmail
+    });
     response.status(201).json({
       success: true,
       message: "LPG request created successfully.",
@@ -18,7 +21,7 @@ async function createBooking(request, response, next) {
 async function listBookings(request, response, next) {
   try {
     console.log("[booking-controller] GET /bookings called");
-    const bookings = await getBookingHistory(request.query.email);
+    const bookings = await getBookingHistory(request.requesterEmail);
     response.json({
       success: true,
       bookings
