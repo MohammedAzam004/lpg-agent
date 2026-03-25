@@ -97,7 +97,7 @@ npm run dev
 Backend default URL:
 
 ```text
-http://localhost:5001
+https://lpg-agent.onrender.com
 ```
 
 ### Frontend
@@ -144,7 +144,7 @@ Scheduler behavior:
 Frontend variables:
 
 ```env
-VITE_API_BASE_URL=http://localhost:5001
+VITE_API_BASE_URL=https://lpg-agent.onrender.com
 ```
 
 ## Multi-language Support
