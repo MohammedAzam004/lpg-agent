@@ -1,4 +1,4 @@
-const DEFAULT_ADMIN_EMAIL = "mohammedazam0004@gmail.com";
+const DEFAULT_ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.EMAIL_USER || "admin@example.com";
 
 function normalizeEmail(email = "") {
   return email.toString().trim().toLowerCase();

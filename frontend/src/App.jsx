@@ -39,7 +39,6 @@ const USER_EMAIL_STORAGE_KEY = "lpg-smart-user-email";
 const LANGUAGE_STORAGE_KEY = "lpg-smart-language";
 const CHAT_SESSION_STORAGE_KEY = "lpg-smart-chat-session";
 const WORKSPACE_MODE_STORAGE_KEY = "lpg-smart-workspace-mode";
-const DEFAULT_ADMIN_EMAIL = "mohammedazam0004@gmail.com";
 
 const initialProfileForm = {
   name: "",
@@ -95,10 +94,6 @@ function isValidEmailFormat(email) {
 
 function isValidPhoneFormat(phone) {
   return /^\d{10}$/.test(phone.replace(/\D/g, ""));
-}
-
-function isAdminEmail(email = "") {
-  return email.toString().trim().toLowerCase() === DEFAULT_ADMIN_EMAIL;
 }
 
 function isPositiveNumberOrEmpty(value) {
@@ -220,7 +215,7 @@ function App() {
   const storeCardRefs = useRef({});
   const highlightTimeoutRef = useRef(null);
   const isAuthenticated = Boolean(user?.email);
-  const isAdmin = Boolean(user?.isAdmin || isAdminEmail(user?.email));
+  const isAdmin = Boolean(user?.isAdmin || user?.role === "admin");
   const isAdminWorkspace = isAdmin && workspaceMode === "admin";
   const stateCount = getUniqueCount(stores, "state");
   const cityCount = getUniqueCount(stores, "city");
@@ -365,7 +360,7 @@ function App() {
           });
           setPreferenceForm(buildPreferenceForm(savedUser));
           setLanguage(savedUser.preferredLanguage || language);
-          if (savedUser.isAdmin || isAdminEmail(savedUser.email)) {
+          if (savedUser.isAdmin || savedUser.role === "admin") {
             setWorkspaceMode(window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY) || "admin");
           }
           setProfileNotice(
@@ -595,7 +590,7 @@ function App() {
   }
 
   async function refreshAdminInsights(activeUser = user) {
-    if (!activeUser?.email || !(activeUser?.isAdmin || isAdminEmail(activeUser.email))) {
+    if (!activeUser?.email || !(activeUser?.isAdmin || activeUser?.role === "admin")) {
       setAdminUsers([]);
       setAdminRequests([]);
       setAdminInsights(null);
@@ -662,7 +657,7 @@ function App() {
       setPreferenceForm(buildPreferenceForm(resolvedUser));
       setLanguage(resolvedUser.preferredLanguage || language);
       window.localStorage.setItem(USER_EMAIL_STORAGE_KEY, resolvedUser.email);
-      if (resolvedUser.isAdmin || isAdminEmail(resolvedUser.email)) {
+      if (resolvedUser.isAdmin || resolvedUser.role === "admin") {
         setWorkspaceMode("admin");
         window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, "admin");
       } else {

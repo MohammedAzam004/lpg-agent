@@ -1,58 +1,88 @@
 # AI-Powered LPG Smart Assistant
 
-AI-Powered LPG Smart Assistant is a full-stack LPG availability platform built with React, Node.js, and Express. It helps users discover nearby LPG branches, compare price and availability, register with profile details, request alerts for out-of-stock branches, and receive automated email updates when stock changes.
+AI-Powered LPG Smart Assistant is a full-stack LPG availability platform built with React, Node.js, and Express. It helps users discover LPG branches, compare prices, chat with an AI assistant, request alerts for out-of-stock stores, receive scheduled email updates, and manage operations through a dedicated admin workspace.
+
+## Live Deployment
+
+- Frontend: [https://lpg-agent.vercel.app/](https://lpg-agent.vercel.app/)
+- Backend: [https://lpg-agent.onrender.com](https://lpg-agent.onrender.com)
 
 ## Overview
 
-The project combines a conversational assistant, structured LPG branch data, scheduler-driven alerting, request tracking, and an admin dashboard. The chatbot uses a safe multi-layer pipeline: lightweight intent checks, Gemini-assisted query understanding when configured, short-term chat memory, and strict backend filtering against local JSON data.
+The project combines:
 
-## Features
+- an AI-assisted LPG chatbot with safe backend filtering
+- store tracking with price, stock, availability, and location data
+- scheduled email notifications and request fulfillment
+- a simple user profile and notification settings flow
+- an admin portal for store, user, and request management
 
-- AI + rule-based chatbot for LPG availability, price, and recommendation queries
-- Short-term chatbot memory for follow-up queries like "cheapest one" or "within 3 km"
-- LPG branch tracking with state -> city -> store hierarchy
-- Smart email notifications for stock recovery, periodic updates, request matches, price drops, and low stock
-- User profile system with registration, simple login, address capture, and notification settings
-- Out-of-stock request tracking and automated alert fulfillment
-- Admin panel for store management, user management, request tracking, analytics, and AI agent overview
-- Trend analytics for price and availability snapshots
-- Voice input and multilingual UI support (English, Hindi, and Telugu)
+The chatbot does not invent LPG stores. All results are filtered against the real JSON store dataset in the backend.
+
+## Core Features
+
+- LPG chatbot with Gemini-assisted query understanding and safe rule-based fallback
+- short-term chatbot memory for follow-up questions like `cheapest one`
+- LPG store search by city, state, price, distance, and availability
+- best-store recommendation with explanation
+- out-of-stock request tracking and stock-available email alerts
+- notification preferences with max price and max distance filters
+- booking and request history tracking
+- admin portal with store management, user management, request tracking, and AI insights
+- multilingual UI support: English, Hindi, Telugu
+- voice input support in the frontend
+- Google Maps redirect from store cards
+- PDF import support for LPG store data
 
 ## Tech Stack
 
 - Frontend: React, Vite, Chart.js
 - Backend: Node.js, Express
-- AI: Google Gemini API
-- Notifications: Nodemailer
 - Scheduler: node-cron
-- Data Storage: JSON files
+- Email: Nodemailer
+- AI: Google Gemini API
+- Storage: JSON files
 
 ## System Architecture
 
 ```text
-Frontend (React UI)
-    -> API layer (fetch)
-    -> Express backend
-        -> Chat services + agent orchestrator
-        -> Chat memory service
-        -> Store, user, request, booking services
-        -> JSON data files
-        -> Scheduler (node-cron)
-        -> Email notifications (Nodemailer)
+React frontend
+  -> API service layer
+  -> Express backend
+      -> Controllers
+      -> Services
+          -> Chat service
+          -> Chat memory service
+          -> Store service
+          -> Request / booking / user services
+          -> Admin insights agent
+      -> JSON data files
+      -> Scheduler
+      -> Nodemailer email system
 ```
 
-### Runtime Flow
+## Main Functional Areas
 
-1. The user interacts with the dashboard or chatbot in the frontend.
-2. React sends requests to the Express backend on port `5001`.
-3. Backend services read LPG branch data from JSON files and apply business rules.
-4. The chatbot uses Gemini when configured, then validates everything against backend filters.
-5. The scheduler checks stock, requests, price drops, and low-stock events on a timed interval.
-6. Matching notifications are sent through Nodemailer or printed to the console when email is not configured.
+### 1. Chatbot
 
-## User Profile Model
+The chatbot uses a multi-layer pipeline:
 
-Registered users are stored in `backend/data/users.json` with fields such as:
+1. preprocess the message
+2. detect greeting, LPG query, or unrelated query
+3. ask Gemini for structured intent when configured
+4. apply strict backend filtering as the final authority
+5. store short-term conversation memory per user or session
+
+Supported examples:
+
+- `available LPG in Hyderabad`
+- `out of stock LPG in Mumbai`
+- `gas under 900 within 3 km`
+- `cheapest one`
+
+### 2. User Profile
+
+Users can register or log in using email without a password. Each profile stores:
 
 - `id`
 - `name`
@@ -64,6 +94,33 @@ Registered users are stored in `backend/data/users.json` with fields such as:
 - `maxDistance`
 - `notificationsEnabled`
 - `preferredLanguage`
+- `role`
+- `isAdmin`
+
+### 3. Notifications
+
+The scheduler runs every 2 hours in production and checks:
+
+- restocked LPG branches
+- request matches
+- targeted stock alerts
+- periodic user digest emails
+
+Alerts respect user filters such as max price and max distance.
+
+### 4. Admin Workspace
+
+Admin users can:
+
+- view all users
+- delete users
+- view all requests
+- delete requests
+- create, edit, and delete stores
+- import store data from PDF
+- review analytics and AI agent insights
+
+Admin access is controlled on the backend. The admin email is configured through environment variables, not hardcoded personal data.
 
 ## Folder Structure
 
@@ -72,6 +129,7 @@ backend/
   controllers/
   data/
   routes/
+  scripts/
   services/
   utils/
 frontend/
@@ -83,12 +141,83 @@ docs/
   screenshots/
 ```
 
-## Setup Instructions
+## Important Data Files
 
-## Deployed URLs
+- Stores: [backend/data/stores.json](D:/lpg-agengt/backend/data/stores.json)
+- Previous store snapshot: [backend/data/previousStores.json](D:/lpg-agengt/backend/data/previousStores.json)
+- Users: [backend/data/users.json](D:/lpg-agengt/backend/data/users.json)
+- Requests: [backend/data/requests.json](D:/lpg-agengt/backend/data/requests.json)
+- Bookings: [backend/data/bookings.json](D:/lpg-agengt/backend/data/bookings.json)
+- Chat memory: [backend/data/chatMemory.json](D:/lpg-agengt/backend/data/chatMemory.json)
 
-- Frontend: `https://lpg-agent.vercel.app/`
-- Backend: `https://lpg-agent.onrender.com`
+For GitHub privacy and cleanliness:
+
+- `stores.json` and `previousStores.json` contain shareable LPG dataset content
+- `users.json`, `requests.json`, `bookings.json`, and `chatMemory.json` are intentionally reset to empty arrays in the repository
+
+## API Summary
+
+### Public and User APIs
+
+- `GET /`
+- `GET /health`
+- `GET /stores`
+- `GET /stores/available`
+- `GET /stores/nearby`
+- `GET /stores/recommend`
+- `GET /stores/analytics`
+- `GET /chat`
+- `POST /chat`
+- `POST /user/register`
+- `GET /user/profile`
+- `POST /user/preferences`
+- `PUT /user/profile`
+- `GET /request`
+- `POST /request`
+- `DELETE /request/:id`
+- `GET /bookings`
+- `POST /bookings`
+
+### Admin APIs
+
+- `GET /admin/users`
+- `DELETE /admin/user/:id`
+- `GET /admin/requests`
+- `DELETE /admin/request/:id`
+- `GET /admin/insights`
+- `POST /stores`
+- `PUT /stores/:id`
+- `DELETE /stores/:id`
+- `POST /stores/import/pdf`
+
+## Environment Variables
+
+Create local `.env` files from the provided example files before running locally.
+
+### Backend
+
+Use [backend/.env.example](D:/lpg-agengt/backend/.env.example)
+
+```env
+PORT=5001
+SCHEDULER_TEST_MODE=false
+FRONTEND_URL=https://lpg-agent.vercel.app
+ADMIN_EMAIL=admin@example.com
+EMAIL_USER=your_email_here
+EMAIL_PASS=your_app_password
+EMAIL_TO=alerts@example.com
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+### Frontend
+
+Use [frontend/.env.example](D:/lpg-agengt/frontend/.env.example)
+
+```env
+VITE_API_BASE_URL=https://lpg-agent.onrender.com
+```
+
+## Local Development
 
 ### Backend
 
@@ -99,10 +228,10 @@ copy .env.example .env
 npm run dev
 ```
 
-Backend default URL:
+Backend local URL:
 
 ```text
-https://lpg-agent.onrender.com
+http://localhost:5001
 ```
 
 ### Frontend
@@ -114,129 +243,52 @@ copy .env.example .env
 npm run dev
 ```
 
-Frontend local dev URL:
+Frontend local URL:
 
 ```text
 http://localhost:5173
 ```
 
-## Environment Variables
+## Production Notes
 
-Create a local `.env` file from `backend/.env.example` before running the backend.
+- The frontend is configured to use the deployed Render backend by default.
+- Local development can override the backend URL through `VITE_API_BASE_URL`.
+- Runtime `.env` files are ignored by Git.
+- Real email delivery requires valid Gmail SMTP credentials.
+- If Gemini is not configured, the chatbot falls back to backend parsing rules.
 
-Required backend variables:
+## Security and Privacy Notes
 
-```env
-EMAIL_USER=your_email_here
-EMAIL_PASS=your_app_password
-GEMINI_API_KEY=your_api_key
-```
-
-Optional backend variables:
-
-```env
-PORT=5001
-SCHEDULER_TEST_MODE=false
-FRONTEND_URL=https://lpg-agent.vercel.app
-EMAIL_TO=alerts@example.com
-```
-
-Scheduler behavior:
-
-- Production mode runs every 1 hour
-- Test mode runs every 30 seconds
-- Toggle with `SCHEDULER_TEST_MODE`
-
-Frontend variables:
-
-```env
-VITE_API_BASE_URL=https://lpg-agent.onrender.com
-```
-
-## Multi-language Support
-
-This project supports:
-
-- English
-- Hindi
-- Telugu
-
-Language choice is stored in browser `localStorage`, and UI/chatbot text falls back to English if a translation key is missing.
-
-## API Endpoints
-
-### Store APIs
-
-- `GET /stores`
-- `GET /stores/available`
-- `GET /stores/nearby?location=Mumbai`
-- `GET /stores/recommend?location=Mumbai`
-- `GET /stores/analytics`
-- `POST /stores`
-- `PUT /stores/:id`
-- `DELETE /stores/:id`
-
-### Chat API
-
-- `GET /chat`
-- `POST /chat`
-
-### User APIs
-
-- `POST /user/register`
-- `GET /user/profile`
-- `POST /user/preferences`
-- `PUT /user/profile`
-
-### Utility APIs
-
-- `GET /`
-- `GET /health`
-
-### Request and Booking APIs
-
-- `POST /request`
-- `GET /request`
-- `DELETE /request/:id`
-- `POST /bookings`
-- `GET /bookings`
-
-### Admin APIs
-
-- `GET /admin/users`
-- `DELETE /admin/user/:id`
-- `GET /admin/requests`
-- `DELETE /admin/request/:id`
-- `GET /admin/insights`
+- API keys and email credentials are not stored in tracked source files.
+- Admin access is not hardcoded to a private email inside the frontend anymore.
+- Runtime user data is not shipped in the repo.
+- Local runtime files remain private through `.gitignore`.
 
 ## Screenshots
 
-Add UI screenshots to `docs/screenshots/` and reference them here, for example:
+Place product screenshots inside [docs/screenshots](D:/lpg-agengt/docs/screenshots) and link them here.
 
-- `docs/screenshots/dashboard.png`
-- `docs/screenshots/chatbot.png`
-- `docs/screenshots/admin-panel.png`
+Suggested screenshots:
 
-## Highlights for Recruiters
-
-- Modular service-oriented backend with clear routing/controller/service separation
-- Safe AI integration with backend validation as the final authority
-- Automated notification workflow with scheduler + request fulfillment
-- Admin tooling for operational visibility and store management
-- Frontend experience focused on usability, analytics, and conversational discovery
+- dashboard
+- chatbot
+- admin portal
+- request tracking
+- analytics panel
 
 ## Future Improvements
 
-- Replace JSON storage with MongoDB or PostgreSQL
-- Add authentication with JWT or OAuth
-- Add role-based admin access
-- Add test coverage with Jest and React Testing Library
-- Add deployment configuration for Docker and cloud hosting
-- Add real-time updates using WebSockets
+- replace JSON storage with MongoDB or PostgreSQL
+- add proper auth with JWT or OAuth
+- add automated test coverage
+- add Docker deployment
+- add real-time updates with WebSockets
+- add audit logs for admin actions
 
-## Notes
+## Recruiter Highlights
 
-- Runtime `.env` files are intentionally ignored by Git.
-- Sample user, request, booking, and chat-memory files are reset to clean arrays for safe sharing.
-- If email credentials are missing, the backend falls back to console previews instead of crashing.
-- Gemini remains optional at runtime; if `GEMINI_API_KEY` is missing, the chatbot falls back to rule-based filtering.
+- full-stack architecture with clear frontend/backend separation
+- modular service-oriented backend design
+- safe AI integration with backend validation
+- admin operations tooling, analytics, and notification workflows
+- multilingual, user-facing product experience
