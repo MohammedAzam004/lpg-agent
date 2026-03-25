@@ -4,10 +4,10 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const app = require("./app");
 const { startAvailabilityScheduler } = require("./services/schedulerService");
 
-const port = 5001;
+const port = Number(process.env.PORT) || 5001;
 
 const server = app.listen(port, () => {
-  console.log("Server running on port 5001");
+  console.log(`Server running on port ${port}`);
 });
 
 server.on("error", (error) => {
