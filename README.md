@@ -85,6 +85,11 @@ docs/
 
 ## Setup Instructions
 
+## Deployed URLs
+
+- Frontend: `https://lpg-agent.vercel.app/`
+- Backend: `https://lpg-agent.onrender.com`
+
 ### Backend
 
 ```bash
@@ -109,7 +114,7 @@ copy .env.example .env
 npm run dev
 ```
 
-Frontend default URL:
+Frontend local dev URL:
 
 ```text
 http://localhost:5173
@@ -132,6 +137,7 @@ Optional backend variables:
 ```env
 PORT=5001
 SCHEDULER_TEST_MODE=false
+FRONTEND_URL=https://lpg-agent.vercel.app
 EMAIL_TO=alerts@example.com
 ```
 

@@ -9,7 +9,26 @@ const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
-app.use(cors());
+const normalizeOrigin = (value) => value?.replace(/\/+$/, "");
+const allowedOrigins = [
+  normalizeOrigin(process.env.FRONTEND_URL),
+  "https://lpg-agent.vercel.app",
+  "http://localhost:5173"
+].filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    const normalizedOrigin = normalizeOrigin(origin);
+
+    if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
+      callback(null, true);
+      return;
+    }
+
+    console.warn(`[cors] Blocked origin: ${origin}`);
+    callback(new Error("Origin not allowed by CORS"));
+  }
+}));
 app.use(express.json());
 
 app.get("/", (request, response) => {
