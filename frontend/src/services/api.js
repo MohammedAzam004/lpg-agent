@@ -1,3 +1,4 @@
+// Production fallback points to the deployed Render backend when Vercel envs are missing.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://lpg-agent.onrender.com";
 
 async function fetchJson(endpoint, options = {}) {
