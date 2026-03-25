@@ -1,0 +1,422 @@
+[
+  {
+    "state": "Maharashtra",
+    "cities": [
+      {
+        "city": "Mumbai",
+        "stores": [
+          {
+            "id": "mh-mum-001",
+            "branchCode": "MH-MUM-AND-01",
+            "name": "Andheri Flame Center",
+            "location": "Andheri",
+            "distance": 2.4,
+            "price": 945,
+            "availability": true,
+            "stockCount": 18,
+            "lastUpdated": "2026-03-24T06:10:00.000Z",
+            "latitude": 19.1197,
+            "longitude": 72.8468
+          },
+          {
+            "id": "mh-mum-002",
+            "branchCode": "MH-MUM-BAN-02",
+            "name": "Bandra Gas Point",
+            "location": "Bandra",
+            "distance": 4.8,
+            "price": 955,
+            "availability": true,
+            "stockCount": 11,
+            "lastUpdated": "2026-03-24T06:05:00.000Z",
+            "latitude": 19.0596,
+            "longitude": 72.8295
+          },
+          {
+            "id": "mh-mum-003",
+            "branchCode": "MH-MUM-GOR-03",
+            "name": "Goregaon LPG Service",
+            "location": "Goregaon",
+            "distance": 6.2,
+            "price": 938,
+            "availability": false,
+            "stockCount": 0,
+            "lastUpdated": "2026-03-24T06:00:00.000Z",
+            "latitude": 19.1663,
+            "longitude": 72.8526
+          }
+        ]
+      },
+      {
+        "city": "Pune",
+        "stores": [
+          {
+            "id": "mh-pun-001",
+            "branchCode": "MH-PUN-KOT-01",
+            "name": "Kothrud LPG Hub",
+            "location": "Kothrud",
+            "distance": 3.9,
+            "price": 905,
+            "availability": true,
+            "stockCount": 21,
+            "lastUpdated": "2026-03-24T05:55:00.000Z",
+            "latitude": 18.5074,
+            "longitude": 73.8077
+          },
+          {
+            "id": "mh-pun-002",
+            "branchCode": "MH-PUN-HAD-02",
+            "name": "Hadapsar Cylinder Store",
+            "location": "Hadapsar",
+            "distance": 6.1,
+            "price": 915,
+            "availability": false,
+            "stockCount": 0,
+            "lastUpdated": "2026-03-24T05:40:00.000Z",
+            "latitude": 18.5089,
+            "longitude": 73.926
+          },
+          {
+            "id": "mh-pun-003",
+            "branchCode": "MH-PUN-WAK-03",
+            "name": "Wakad Gas Plaza",
+            "location": "Wakad",
+            "distance": 7.4,
+            "price": 912,
+            "availability": true,
+            "stockCount": 10,
+            "lastUpdated": "2026-03-24T05:32:00.000Z",
+            "latitude": 18.5975,
+            "longitude": 73.7637
+          }
+        ]
+      },
+      {
+        "city": "Nagpur",
+        "stores": [
+          {
+            "id": "mh-nag-001",
+            "branchCode": "MH-NAG-DHA-01",
+            "name": "Dharampeth Gas Agency",
+            "location": "Dharampeth",
+            "distance": 5.5,
+            "price": 898,
+            "availability": true,
+            "stockCount": 14,
+            "lastUpdated": "2026-03-24T05:25:00.000Z",
+            "latitude": 21.1358,
+            "longitude": 79.0554
+          },
+          {
+            "id": "mh-nag-002",
+            "branchCode": "MH-NAG-MAN-02",
+            "name": "Manish Nagar LPG Branch",
+            "location": "Manish Nagar",
+            "distance": 7.2,
+            "price": 910,
+            "availability": true,
+            "stockCount": 9,
+            "lastUpdated": "2026-03-24T05:15:00.000Z",
+            "latitude": 21.0793,
+            "longitude": 79.0485
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "state": "Telangana",
+    "cities": [
+      {
+        "city": "Hyderabad",
+        "stores": [
+          {
+            "id": "tg-hyd-001",
+            "branchCode": "TG-HYD-MAD-01",
+            "name": "Madhapur Gas World",
+            "location": "Madhapur",
+            "distance": 3.1,
+            "price": 890,
+            "availability": true,
+            "stockCount": 24,
+            "lastUpdated": "2026-03-24T06:00:00.000Z",
+            "latitude": 17.4483,
+            "longitude": 78.3915
+          },
+          {
+            "id": "tg-hyd-002",
+            "branchCode": "TG-HYD-KUK-02",
+            "name": "Kukatpally Fuel Depot",
+            "location": "Kukatpally",
+            "distance": 6.4,
+            "price": 900,
+            "availability": false,
+            "stockCount": 0,
+            "lastUpdated": "2026-03-24T05:45:00.000Z",
+            "latitude": 17.4933,
+            "longitude": 78.3997
+          },
+          {
+            "id": "tg-hyd-003",
+            "branchCode": "TG-HYD-GAC-03",
+            "name": "Gachibowli LPG Hub",
+            "location": "Gachibowli",
+            "distance": 5.2,
+            "price": 902,
+            "availability": true,
+            "stockCount": 13,
+            "lastUpdated": "2026-03-24T05:48:00.000Z",
+            "latitude": 17.4401,
+            "longitude": 78.3489
+          }
+        ]
+      },
+      {
+        "city": "Warangal",
+        "stores": [
+          {
+            "id": "tg-war-001",
+            "branchCode": "TG-WAR-HAN-01",
+            "name": "Hanamkonda LPG Center",
+            "location": "Hanamkonda",
+            "distance": 4.6,
+            "price": 885,
+            "availability": true,
+            "stockCount": 17,
+            "lastUpdated": "2026-03-24T05:35:00.000Z",
+            "latitude": 18.0057,
+            "longitude": 79.5626
+          },
+          {
+            "id": "tg-war-002",
+            "branchCode": "TG-WAR-KAZ-02",
+            "name": "Kazipet Gas Services",
+            "location": "Kazipet",
+            "distance": 7.8,
+            "price": 895,
+            "availability": true,
+            "stockCount": 13,
+            "lastUpdated": "2026-03-24T05:20:00.000Z",
+            "latitude": 17.9821,
+            "longitude": 79.5174
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "state": "Karnataka",
+    "cities": [
+      {
+        "city": "Bengaluru",
+        "stores": [
+          {
+            "id": "ka-blr-001",
+            "branchCode": "KA-BLR-IND-01",
+            "name": "Indiranagar Gas Hub",
+            "location": "Indiranagar",
+            "distance": 2.9,
+            "price": 930,
+            "availability": true,
+            "stockCount": 20,
+            "lastUpdated": "2026-03-24T05:50:00.000Z",
+            "latitude": 12.9784,
+            "longitude": 77.6408
+          },
+          {
+            "id": "ka-blr-002",
+            "branchCode": "KA-BLR-YEL-02",
+            "name": "Yelahanka LPG Branch",
+            "location": "Yelahanka",
+            "distance": 8.1,
+            "price": 920,
+            "availability": false,
+            "stockCount": 0,
+            "lastUpdated": "2026-03-24T05:10:00.000Z",
+            "latitude": 13.1005,
+            "longitude": 77.5963
+          },
+          {
+            "id": "ka-blr-003",
+            "branchCode": "KA-BLR-JAY-03",
+            "name": "Jayanagar Flame Point",
+            "location": "Jayanagar",
+            "distance": 5.1,
+            "price": 926,
+            "availability": true,
+            "stockCount": 12,
+            "lastUpdated": "2026-03-24T05:26:00.000Z",
+            "latitude": 12.9293,
+            "longitude": 77.5828
+          }
+        ]
+      },
+      {
+        "city": "Mysuru",
+        "stores": [
+          {
+            "id": "ka-mys-001",
+            "branchCode": "KA-MYS-VIJ-01",
+            "name": "Vijayanagar Cylinder Point",
+            "location": "Vijayanagar",
+            "distance": 4.2,
+            "price": 905,
+            "availability": true,
+            "stockCount": 16,
+            "lastUpdated": "2026-03-24T05:30:00.000Z",
+            "latitude": 12.2923,
+            "longitude": 76.6176
+          },
+          {
+            "id": "ka-mys-002",
+            "branchCode": "KA-MYS-GOK-02",
+            "name": "Gokulam Gas Station",
+            "location": "Gokulam",
+            "distance": 5.7,
+            "price": 912,
+            "availability": true,
+            "stockCount": 8,
+            "lastUpdated": "2026-03-24T05:05:00.000Z",
+            "latitude": 12.3348,
+            "longitude": 76.6197
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "state": "Gujarat",
+    "cities": [
+      {
+        "city": "Ahmedabad",
+        "stores": [
+          {
+            "id": "gj-ahm-001",
+            "branchCode": "GJ-AHM-SAT-01",
+            "name": "Satellite Gas Depot",
+            "location": "Satellite",
+            "distance": 3.3,
+            "price": 915,
+            "availability": true,
+            "stockCount": 15,
+            "lastUpdated": "2026-03-24T05:55:00.000Z",
+            "latitude": 23.0261,
+            "longitude": 72.5242
+          },
+          {
+            "id": "gj-ahm-002",
+            "branchCode": "GJ-AHM-NAV-02",
+            "name": "Navrangpura LPG House",
+            "location": "Navrangpura",
+            "distance": 4.9,
+            "price": 918,
+            "availability": true,
+            "stockCount": 8,
+            "lastUpdated": "2026-03-25T04:25:02.056Z",
+            "state": "Gujarat",
+            "city": "Ahmedabad",
+            "latitude": 23.0375,
+            "longitude": 72.5614
+          }
+        ]
+      },
+      {
+        "city": "Surat",
+        "stores": [
+          {
+            "id": "gj-sur-001",
+            "branchCode": "GJ-SUR-ADA-01",
+            "name": "Adajan Gas Point",
+            "location": "Adajan",
+            "distance": 4.1,
+            "price": 905,
+            "availability": true,
+            "stockCount": 19,
+            "lastUpdated": "2026-03-24T05:35:00.000Z",
+            "latitude": 21.1959,
+            "longitude": 72.7947
+          },
+          {
+            "id": "gj-sur-002",
+            "branchCode": "GJ-SUR-VES-02",
+            "name": "Vesu Fuel Center",
+            "location": "Vesu",
+            "distance": 5.4,
+            "price": 918,
+            "availability": true,
+            "stockCount": 12,
+            "lastUpdated": "2026-03-24T05:20:00.000Z",
+            "latitude": 21.1498,
+            "longitude": 72.7792
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "state": "Tamil Nadu",
+    "cities": [
+      {
+        "city": "Chennai",
+        "stores": [
+          {
+            "id": "tn-che-001",
+            "branchCode": "TN-CHE-ANN-01",
+            "name": "Anna Nagar Gas Link",
+            "location": "Anna Nagar",
+            "distance": 3.8,
+            "price": 940,
+            "availability": true,
+            "stockCount": 14,
+            "lastUpdated": "2026-03-24T05:58:00.000Z",
+            "latitude": 13.086,
+            "longitude": 80.2101
+          },
+          {
+            "id": "tn-che-002",
+            "branchCode": "TN-CHE-VEL-02",
+            "name": "Velachery Cylinder Mart",
+            "location": "Velachery",
+            "distance": 6.7,
+            "price": 948,
+            "availability": false,
+            "stockCount": 0,
+            "lastUpdated": "2026-03-24T05:28:00.000Z",
+            "latitude": 12.975,
+            "longitude": 80.2212
+          }
+        ]
+      },
+      {
+        "city": "Coimbatore",
+        "stores": [
+          {
+            "id": "tn-coi-001",
+            "branchCode": "TN-COI-RSN-01",
+            "name": "RS Puram LPG Care",
+            "location": "RS Puram",
+            "distance": 4.4,
+            "price": 899,
+            "availability": true,
+            "stockCount": 17,
+            "lastUpdated": "2026-03-24T05:22:00.000Z",
+            "latitude": 11.0086,
+            "longitude": 76.9525
+          },
+          {
+            "id": "tn-coi-002",
+            "branchCode": "TN-COI-GAN-02",
+            "name": "Gandhipuram Gas Depot",
+            "location": "Gandhipuram",
+            "distance": 5.3,
+            "price": 907,
+            "availability": true,
+            "stockCount": 11,
+            "lastUpdated": "2026-03-24T05:18:00.000Z",
+            "latitude": 11.0177,
+            "longitude": 76.9674
+          }
+        ]
+      }
+    ]
+  }
+]
