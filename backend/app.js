@@ -10,18 +10,41 @@ const adminRoutes = require("./routes/adminRoutes");
 const app = express();
 
 const normalizeOrigin = (value) => value?.replace(/\/+$/, "");
-const allowedOrigins = [
-  normalizeOrigin(process.env.FRONTEND_URL),
-  "https://lpg-agent.vercel.app",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173"
-].filter(Boolean);
+
+function isAllowedOrigin(origin) {
+  const normalizedOrigin = normalizeOrigin(origin);
+
+  if (!normalizedOrigin) {
+    return true;
+  }
+
+  const explicitOrigins = [
+    normalizeOrigin(process.env.FRONTEND_URL),
+    "https://lpg-agent.vercel.app"
+  ].filter(Boolean);
+
+  if (explicitOrigins.includes(normalizedOrigin)) {
+    return true;
+  }
+
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin)) {
+    return true;
+  }
+
+  if (/^http:\/\/localhost(?::\d+)?$/i.test(normalizedOrigin)) {
+    return true;
+  }
+
+  if (/^http:\/\/127\.0\.0\.1(?::\d+)?$/i.test(normalizedOrigin)) {
+    return true;
+  }
+
+  return false;
+}
 
 app.use(cors({
   origin(origin, callback) {
-    const normalizedOrigin = normalizeOrigin(origin);
-
-    if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }

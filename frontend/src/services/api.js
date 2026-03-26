@@ -1,7 +1,29 @@
 const DEFAULT_DEPLOYED_API_BASE_URL = "https://lpg-agent.onrender.com";
+const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:5001";
 
-// The deployed Render backend is the safe default. Local development can still override this with VITE_API_BASE_URL.
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || DEFAULT_DEPLOYED_API_BASE_URL;
+function normalizeBaseUrl(value) {
+  return value?.replace(/\/+$/, "") || "";
+}
+
+function resolveApiBaseUrl() {
+  const configuredApiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+
+  if (configuredApiBaseUrl) {
+    return configuredApiBaseUrl;
+  }
+
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return DEFAULT_LOCAL_API_BASE_URL;
+    }
+  }
+
+  return DEFAULT_DEPLOYED_API_BASE_URL;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 async function fetchJson(endpoint, options = {}) {
   const { userMessage = "", userEmail = "", headers = {}, ...fetchOptions } = options;
