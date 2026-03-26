@@ -6,6 +6,7 @@ function ChatMessage({
   message,
   language = "en",
   onRequestStore,
+  bookingStatusByStoreId = {},
   requestPendingId = null,
   onNotifyStore,
   notifyPendingId = null,
@@ -36,6 +37,7 @@ function ChatMessage({
               language={language}
               onSelect={onOpenStore}
               onRequest={onRequestStore}
+              requestStatus={bookingStatusByStoreId[recommendation.id] || null}
               requestLoading={requestPendingId === recommendation.id}
               onNotify={onNotifyStore}
               notifyLoading={notifyPendingId === recommendation.id}
@@ -55,6 +57,7 @@ function ChatMessage({
                 language={language}
                 onSelect={onOpenStore}
                 onRequest={onRequestStore}
+                requestStatus={bookingStatusByStoreId[store.id] || null}
                 requestLoading={requestPendingId === store.id}
                 onNotify={onNotifyStore}
                 notifyLoading={notifyPendingId === store.id}

@@ -29,6 +29,7 @@ function StoreCard({
   language = "en",
   onSelect,
   onRequest,
+  requestStatus = null,
   requestLoading = false,
   onNotify,
   notifyLoading = false,
@@ -45,9 +46,11 @@ function StoreCard({
   const showBookingButton = store.availability && typeof onRequest === "function";
   const showNotifyButton = !store.availability && typeof onNotify === "function";
   const showMapButton = Number.isFinite(Number(store.latitude)) && Number.isFinite(Number(store.longitude));
+  const hasExistingBookingRequest = Boolean(requestStatus);
   const hasExistingNotifyRequest = Boolean(notifyStatus);
   const isInteractive = typeof onSelect === "function";
   const notifyLabel = hasExistingNotifyRequest ? text.alreadyRequested : text.notifyWhenAvailable;
+  const bookingLabel = hasExistingBookingRequest ? (text.requestSentButton || "Request sent") : text.requestButton;
   const shouldRenderFooter = showBookingButton || showNotifyButton || showMapButton;
 
   function handleCardClick() {
@@ -129,14 +132,14 @@ function StoreCard({
           {showBookingButton && (
             <button
               type="button"
-              className="store-card__action"
+              className={`store-card__action ${hasExistingBookingRequest ? "store-card__action--muted" : ""}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onRequest(store);
               }}
-              disabled={requestLoading}
+              disabled={requestLoading || hasExistingBookingRequest}
             >
-              {requestLoading ? text.sending : text.requestButton}
+              {requestLoading ? text.sending : bookingLabel}
             </button>
           )}
 

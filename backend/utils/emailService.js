@@ -93,6 +93,9 @@ function createTransporter() {
 
   return nodemailer.createTransport({
     service: "gmail",
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
       user: EMAIL_USER,
       pass: EMAIL_PASS

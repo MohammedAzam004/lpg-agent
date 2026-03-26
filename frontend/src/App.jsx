@@ -214,6 +214,13 @@ function App() {
   const recognitionRef = useRef(null);
   const storeCardRefs = useRef({});
   const highlightTimeoutRef = useRef(null);
+  const heroSectionRef = useRef(null);
+  const profileSectionRef = useRef(null);
+  const notificationSectionRef = useRef(null);
+  const chatSectionRef = useRef(null);
+  const storesSectionRef = useRef(null);
+  const requestsSectionRef = useRef(null);
+  const adminSectionRef = useRef(null);
   const isAuthenticated = Boolean(user?.email);
   const isAdmin = Boolean(user?.isAdmin || user?.role === "admin");
   const isAdminWorkspace = isAdmin && workspaceMode === "admin";
@@ -811,14 +818,15 @@ function App() {
     setError("");
 
     try {
-      await createBooking({
+      const savedBooking = await createBooking({
         userEmail: user.email,
         storeId: store.id,
         quantity: 1
       });
+      if (savedBooking) {
+        setBookingHistory((currentBookings) => [savedBooking, ...currentBookings.filter((booking) => booking.id !== savedBooking.id)]);
+      }
       setProfileNotice(uiText.bookingSuccess);
-      const bookings = await fetchBookingHistory(user.email);
-      setBookingHistory(bookings);
     } catch (requestError) {
       setError(requestError.message || uiText.messages.bookingLoadError);
     } finally {
@@ -1159,6 +1167,13 @@ function App() {
     window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, nextMode);
   }
 
+  function scrollToSection(sectionRef) {
+    sectionRef?.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+
   const requestStatusByStoreId = useMemo(() => (
     requestHistory.reduce((statusMap, request) => {
       if (request.storeId) {
@@ -1169,9 +1184,34 @@ function App() {
     }, {})
   ), [requestHistory]);
 
+  const bookingStatusByStoreId = useMemo(() => (
+    bookingHistory.reduce((statusMap, booking) => {
+      if (booking.storeId) {
+        statusMap[booking.storeId] = booking.status || "requested";
+      }
+
+      return statusMap;
+    }, {})
+  ), [bookingHistory]);
+
+  const navigationItems = isAdminWorkspace
+    ? [
+      { key: "home", label: uiText.nav?.home || "Home", ref: heroSectionRef },
+      { key: "profile", label: uiText.nav?.profile || "Profile", ref: profileSectionRef },
+      { key: "admin", label: uiText.nav?.admin || "Admin", ref: adminSectionRef }
+    ]
+    : [
+      { key: "home", label: uiText.nav?.home || "Home", ref: heroSectionRef },
+      { key: "profile", label: uiText.nav?.profile || "Profile", ref: profileSectionRef },
+      ...(isAuthenticated ? [{ key: "alerts", label: uiText.nav?.alerts || "Alerts", ref: notificationSectionRef }] : []),
+      { key: "chat", label: uiText.nav?.chat || "Chat", ref: chatSectionRef },
+      { key: "stores", label: uiText.nav?.stores || "Stores", ref: storesSectionRef },
+      ...(isAuthenticated ? [{ key: "requests", label: uiText.nav?.requests || "Requests", ref: requestsSectionRef }] : [])
+    ];
+
   return (
     <main className="app-shell">
-      <section className="hero-panel">
+      <section ref={heroSectionRef} id="home-section" className="hero-panel">
         <div className="hero-panel__content">
           <div className="hero-panel__toolbar">
             <CylinderLogo />
@@ -1254,18 +1294,28 @@ function App() {
         </form>
       </section>
 
-      <ProfilePanel
-        form={profileForm}
-        user={user}
-        isAdmin={isAdmin}
-        loading={profileLoading}
-        error={profileError}
-        notice={profileNotice}
-        language={language}
-        onChange={handleProfileInputChange}
-        onSubmit={handleProfileSubmit}
-        onReset={handleProfileReset}
-      />
+      <nav className="section-nav" aria-label="Page sections">
+        {navigationItems.map((item) => (
+          <button key={item.key} type="button" className="section-nav__button" onClick={() => scrollToSection(item.ref)}>
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      <div ref={profileSectionRef} id="profile-section">
+        <ProfilePanel
+          form={profileForm}
+          user={user}
+          isAdmin={isAdmin}
+          loading={profileLoading}
+          error={profileError}
+          notice={profileNotice}
+          language={language}
+          onChange={handleProfileInputChange}
+          onSubmit={handleProfileSubmit}
+          onReset={handleProfileReset}
+        />
+      </div>
 
       {!isAuthenticated && (
         <section className="login-gate-panel">
@@ -1277,6 +1327,7 @@ function App() {
       )}
 
       {isAuthenticated && !isAdminWorkspace && (
+        <div ref={notificationSectionRef} id="alerts-section">
           <NotificationSettingsPanel
             user={user}
             settings={preferenceForm}
@@ -1286,6 +1337,7 @@ function App() {
             onChange={handlePreferenceChange}
             onSubmit={handlePreferenceSubmit}
           />
+        </div>
       )}
 
       {error && <div className="banner banner--error">{error}</div>}
@@ -1293,7 +1345,7 @@ function App() {
       {adminError && <div className="banner banner--error">{adminError}</div>}
 
       {isAdminWorkspace ? (
-        <>
+        <div ref={adminSectionRef} id="admin-section">
           <section className="admin-workspace-hero">
             <div>
               <p className="analytics-panel__eyebrow">{uiText.adminPortalLabel || "Admin Portal"}</p>
@@ -1357,7 +1409,7 @@ function App() {
             onDeleteUser={handleDeleteAdminUser}
             onDeleteRequest={handleDeleteAdminRequest}
           />
-        </>
+        </div>
       ) : (
         <>
       <section className="dashboard-grid">
@@ -1408,7 +1460,7 @@ function App() {
       <AnalyticsPanel stores={stores} loading={dashboardLoading} language={language} />
       <TrendCharts trends={trendData} loading={dashboardLoading} language={language} />
       <section className="workspace-grid">
-        <div className="chat-panel">
+        <div ref={chatSectionRef} id="chat-section" className="chat-panel">
           <div className="chat-panel__header">
             <div>
               <p className="chat-panel__eyebrow">Assistant</p>
@@ -1425,6 +1477,7 @@ function App() {
                 language={language}
                 onOpenStore={handleOpenStoreFromResponse}
                 onRequestStore={handleRequestStore}
+                bookingStatusByStoreId={bookingStatusByStoreId}
                 requestPendingId={bookingPendingStoreId}
                 onNotifyStore={handleNotifyWhenAvailable}
                 notifyPendingId={notifyPendingStoreId}
@@ -1495,7 +1548,7 @@ function App() {
           )}
         </div>
 
-        <div className="store-panel">
+        <div ref={storesSectionRef} id="stores-section" className="store-panel">
           <div className="store-panel__header">
             <div>
               <p className="store-panel__eyebrow">{uiText.availabilityBoard}</p>
@@ -1525,6 +1578,7 @@ function App() {
                   storeRef={(element) => registerStoreCardRef(store.id, element)}
                   highlighted={highlightedStoreId === store.id}
                   onRequest={handleRequestStore}
+                  requestStatus={bookingStatusByStoreId[store.id] || null}
                   requestLoading={bookingPendingStoreId === store.id}
                   onNotify={handleNotifyWhenAvailable}
                   notifyLoading={notifyPendingStoreId === store.id}
@@ -1539,6 +1593,7 @@ function App() {
       </section>
 
       {isAuthenticated && (
+        <div ref={requestsSectionRef} id="requests-section">
           <RequestHistoryPanel
             user={user}
             loading={requestHistoryLoading}
@@ -1548,6 +1603,7 @@ function App() {
             language={language}
             onRemove={handleRemoveRequest}
           />
+        </div>
       )}
         </>
       )}
