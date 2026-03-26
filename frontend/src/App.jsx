@@ -472,8 +472,8 @@ function App() {
     let ignore = false;
 
     async function restoreUserProfile() {
-      const savedEmail = window.localStorage.getItem(USER_EMAIL_STORAGE_KEY);
       const cachedUser = loadStoredUser();
+      const savedEmail = window.localStorage.getItem(USER_EMAIL_STORAGE_KEY) || cachedUser?.email || "";
 
       if (!savedEmail) {
         if (!ignore) {
