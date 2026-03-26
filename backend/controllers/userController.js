@@ -13,18 +13,30 @@ function buildUserPayload(user) {
   };
 }
 
+function dispatchProfileEmails(mode, user, preferenceMode = "summary") {
+  const emailTasks = mode === "register"
+    ? [sendWelcomeEmail(user), sendPreferenceSummaryEmail(user, preferenceMode)]
+    : mode === "login"
+      ? [sendLoginGreetingEmail(user), sendPreferenceSummaryEmail(user, preferenceMode)]
+      : [sendPreferenceSummaryEmail(user, preferenceMode)];
+
+  Promise.allSettled(emailTasks)
+    .then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          console.error(`[user-controller] Background email task ${index + 1} failed:`, result.reason?.message || result.reason);
+        }
+      });
+    })
+    .catch((error) => {
+      console.error("[user-controller] Background email dispatch failed:", error.message);
+    });
+}
+
 async function registerUser(request, response, next) {
   try {
     console.log("[user-controller] POST /user/register called");
     const result = await registerOrLoginUser(request.body);
-
-    if (result.action === "register") {
-      await sendWelcomeEmail(result.user);
-      await sendPreferenceSummaryEmail(result.user, "summary");
-    } else {
-      await sendLoginGreetingEmail(result.user);
-      await sendPreferenceSummaryEmail(result.user, "summary");
-    }
 
     response.status(result.action === "register" ? 201 : 200).json({
       success: true,
@@ -32,6 +44,8 @@ async function registerUser(request, response, next) {
       message: result.action === "register" ? "User registered successfully." : "Login successful.",
       ...buildUserPayload(result.user)
     });
+
+    dispatchProfileEmails(result.action, result.user, "summary");
   } catch (error) {
     console.error("[user-controller] Failed to register/login user:", error.message);
     next(error);
@@ -77,6 +91,8 @@ async function handleNotificationSettingsUpdate(request, response, next, routeLa
       message: "Notification settings updated successfully.",
       ...buildUserPayload(user)
     });
+
+    dispatchProfileEmails("preferences", user, "updated");
   } catch (error) {
     console.error("[user-controller] Failed to update notification settings:", error.message);
     next(error);
