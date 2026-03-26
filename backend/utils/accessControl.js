@@ -1,3 +1,5 @@
+const { getSessionByToken } = require("../services/sessionService");
+
 const DEFAULT_ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.EMAIL_USER || "admin@example.com";
 
 function normalizeEmail(email = "") {
@@ -8,13 +10,14 @@ function isAdminEmail(email = "") {
   return normalizeEmail(email) === normalizeEmail(DEFAULT_ADMIN_EMAIL);
 }
 
-function extractRequesterEmail(request) {
-  return normalizeEmail(
-    request.headers["x-user-email"]
-      || request.body?.userEmail
-      || request.body?.email
-      || request.query?.email
-  );
+function extractSessionToken(request) {
+  const authorizationHeader = request.headers.authorization || "";
+
+  if (/^bearer\s+/i.test(authorizationHeader)) {
+    return authorizationHeader.replace(/^bearer\s+/i, "").trim();
+  }
+
+  return (request.headers["x-session-token"] || "").toString().trim();
 }
 
 function sendAccessError(response, message, statusCode) {
@@ -24,40 +27,64 @@ function sendAccessError(response, message, statusCode) {
   });
 }
 
-function requireAuthenticatedUser(request, response, next) {
-  const requesterEmail = extractRequesterEmail(request);
+async function requireAuthenticatedUser(request, response, next) {
+  try {
+    const sessionToken = extractSessionToken(request);
 
-  if (!requesterEmail) {
-    sendAccessError(response, "Please login to continue.", 401);
-    return;
+    if (!sessionToken) {
+      sendAccessError(response, "Please login to continue.", 401);
+      return;
+    }
+
+    const session = await getSessionByToken(sessionToken);
+
+    if (!session?.userEmail) {
+      sendAccessError(response, "Your session has expired. Please login again.", 401);
+      return;
+    }
+
+    request.sessionToken = sessionToken;
+    request.requesterEmail = normalizeEmail(session.userEmail);
+    request.isAdmin = isAdminEmail(session.userEmail);
+    next();
+  } catch (error) {
+    next(error);
   }
-
-  request.requesterEmail = requesterEmail;
-  request.isAdmin = isAdminEmail(requesterEmail);
-  next();
 }
 
-function requireAdminAccess(request, response, next) {
-  const requesterEmail = extractRequesterEmail(request);
+async function requireAdminAccess(request, response, next) {
+  try {
+    const sessionToken = extractSessionToken(request);
 
-  if (!requesterEmail) {
-    sendAccessError(response, "Please login to continue.", 401);
-    return;
+    if (!sessionToken) {
+      sendAccessError(response, "Please login to continue.", 401);
+      return;
+    }
+
+    const session = await getSessionByToken(sessionToken);
+
+    if (!session?.userEmail) {
+      sendAccessError(response, "Your session has expired. Please login again.", 401);
+      return;
+    }
+
+    if (!isAdminEmail(session.userEmail)) {
+      sendAccessError(response, "Admin access only.", 403);
+      return;
+    }
+
+    request.sessionToken = sessionToken;
+    request.requesterEmail = normalizeEmail(session.userEmail);
+    request.isAdmin = true;
+    next();
+  } catch (error) {
+    next(error);
   }
-
-  if (!isAdminEmail(requesterEmail)) {
-    sendAccessError(response, "Admin access only.", 403);
-    return;
-  }
-
-  request.requesterEmail = requesterEmail;
-  request.isAdmin = true;
-  next();
 }
 
 module.exports = {
   DEFAULT_ADMIN_EMAIL,
-  extractRequesterEmail,
+  extractSessionToken,
   isAdminEmail,
   normalizeEmail,
   requireAdminAccess,

@@ -30,9 +30,14 @@ function getCurrentlyAvailableStores(stores) {
 }
 
 async function processImmediateRequestNotifications() {
-  console.log("[scheduler] Immediate request notifications are disabled. Waiting for the next 2-hour digest cycle.");
   const [previousStores, currentStores] = await Promise.all([getPreviousStores(), getStores()]);
-  await runImmediateRequestNotificationAgent(previousStores, currentStores);
+  const sentCount = await runImmediateRequestNotificationAgent(previousStores, currentStores);
+
+  if (sentCount > 0) {
+    console.log(`[scheduler] Sent ${sentCount} immediate request notification(s).`);
+  }
+
+  await savePreviousStores(currentStores);
 }
 
 async function syncSnapshotWithoutNotifications() {

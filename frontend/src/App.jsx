@@ -13,6 +13,7 @@ import StoreBoard from "./components/StoreBoard";
 import TrendCharts from "./components/TrendCharts";
 import { getUiText } from "./i18n";
 import {
+  clearStoredSessionToken,
   createBooking,
   createRequestAlert,
   createStoreRecord,
@@ -30,9 +31,12 @@ import {
   fetchStoreAnalytics,
   fetchStores,
   fetchUserProfile,
+  getStoredSessionToken,
   importStoresFromPdf,
+  logoutUser,
   registerOrLoginUser,
   sendChatMessage,
+  setStoredSessionToken,
   updateStoreRecord,
   updateUserProfile
 } from "./services/api";
@@ -288,6 +292,11 @@ function clearStoredUser() {
   window.localStorage.removeItem(USER_PROFILE_STORAGE_KEY);
 }
 
+function clearStoredSessionData() {
+  clearStoredUser();
+  clearStoredSessionToken();
+}
+
 function buildProfileForm(user = null) {
   if (!user) {
     return initialProfileForm;
@@ -474,9 +483,14 @@ function App() {
     async function restoreUserProfile() {
       const cachedUser = loadStoredUser();
       const savedEmail = window.localStorage.getItem(USER_EMAIL_STORAGE_KEY) || cachedUser?.email || "";
+      const savedSessionToken = getStoredSessionToken();
 
-      if (!savedEmail) {
+      if (!savedSessionToken) {
         if (!ignore) {
+          clearStoredSessionData();
+          setUser(null);
+          setProfileForm(initialProfileForm);
+          setPreferenceForm(initialPreferenceForm);
           setAuthInitializing(false);
         }
         return;
@@ -491,7 +505,7 @@ function App() {
       setProfileLoading(true);
 
       try {
-        const savedUser = await fetchUserProfile(savedEmail);
+        const savedUser = await fetchUserProfile(savedEmail || undefined);
 
         if (!ignore && savedUser) {
           setProfileError("");
@@ -504,7 +518,7 @@ function App() {
             getUiText(savedUser.preferredLanguage || language).messages.welcomeBack(savedUser.name)
           );
         } else if (!ignore) {
-          clearStoredUser();
+          clearStoredSessionData();
           setUser(null);
           setProfileForm(initialProfileForm);
           setPreferenceForm(initialPreferenceForm);
@@ -514,7 +528,7 @@ function App() {
           console.error("[app] Failed to restore saved profile:", restoreError.message);
 
           if (!cachedUser?.email) {
-            clearStoredUser();
+            clearStoredSessionData();
             setProfileError("Unable to restore the saved user profile right now.");
           }
         }
@@ -532,6 +546,34 @@ function App() {
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    function handleAuthExpired() {
+      clearStoredSessionData();
+      setUser(null);
+      setProfileForm(initialProfileForm);
+      setPreferenceForm(initialPreferenceForm);
+      setProfileNotice("");
+      setProfileError("");
+      setNotificationFeedback(null);
+      setBookingHistory([]);
+      setRequestHistory([]);
+      setAdminNotice("");
+      setAdminError("");
+      setRequestFeedback(null);
+      setError("");
+      setMessages([createInitialMessage(language)]);
+      setDraft("");
+      setAuthInitializing(false);
+      navigate("/profile", { replace: true, state: { reason: "login" } });
+    }
+
+    window.addEventListener("lpg-auth-expired", handleAuthExpired);
+
+    return () => {
+      window.removeEventListener("lpg-auth-expired", handleAuthExpired);
+    };
+  }, [language, navigate]);
 
   useEffect(() => {
     let ignore = false;
@@ -846,12 +888,14 @@ function App() {
         preferredLanguage: language
       });
       const resolvedUser = response?.user || null;
+      const sessionToken = response?.sessionToken || "";
 
-      if (!resolvedUser) {
+      if (!resolvedUser || !sessionToken) {
         throw new Error(uiText.messages.noUserReturned);
       }
 
       setProfileError("");
+      setStoredSessionToken(sessionToken);
       setUser(resolvedUser);
       setProfileForm(buildProfileForm(resolvedUser));
       setPreferenceForm(buildPreferenceForm(resolvedUser));
@@ -940,7 +984,15 @@ function App() {
     }
   }
 
-  function handleProfileReset() {
+  async function handleProfileReset() {
+    try {
+      if (getStoredSessionToken()) {
+        await logoutUser();
+      }
+    } catch (error) {
+      console.error("[app] Failed to logout cleanly:", error.message);
+    }
+
     setUser(null);
     setProfileForm(initialProfileForm);
     setPreferenceForm(initialPreferenceForm);
@@ -959,7 +1011,7 @@ function App() {
     setAdminNotice("");
     setMessages([createInitialMessage(language)]);
     setDraft("");
-    clearStoredUser();
+    clearStoredSessionData();
     window.localStorage.removeItem(CHAT_MESSAGES_STORAGE_KEY);
     navigate("/profile", { replace: true });
   }
@@ -1207,7 +1259,7 @@ function App() {
       setAdminNotice(uiText.admin.userDeleted);
 
       if (user?.id === adminUser.id) {
-        handleProfileReset();
+        await handleProfileReset();
       }
     } catch (deleteError) {
       setAdminError(deleteError.message || uiText.admin.userDeleteError);

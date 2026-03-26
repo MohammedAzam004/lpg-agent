@@ -10,6 +10,7 @@ const { filterStoresForUserPreferences, getAllUsers } = require("../userService"
 const { processPendingRequests } = require("../requestService");
 const {
   sendAvailabilityDigestEmail,
+  sendRequestedLpgAvailableEmail,
   sendUserLpgDigestEmail
 } = require("../../utils/emailService");
 
@@ -166,8 +167,19 @@ async function runNotificationAgent({ previousStores = [], currentStores = [], t
 }
 
 async function runImmediateRequestNotificationAgent(previousStores, currentStores) {
-  console.log("[notification-agent] Immediate request notifications are disabled. Waiting for the next scheduled digest cycle.");
-  return 0;
+  const requestMatches = await processPendingRequests(previousStores, currentStores);
+
+  if (!requestMatches.length) {
+    console.log("[notification-agent] No immediate request notifications to send.");
+    return 0;
+  }
+
+  for (const match of requestMatches) {
+    await sendRequestedLpgAvailableEmail(match.user, match.request, match.store);
+    console.log(`[notification-agent] Sent immediate request match email to ${match.user.email}.`);
+  }
+
+  return requestMatches.length;
 }
 
 module.exports = {

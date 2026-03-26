@@ -3,6 +3,7 @@ const {
   sendPreferenceSummaryEmail,
   sendWelcomeEmail
 } = require("../utils/emailService");
+const { createSession, revokeSession } = require("../services/sessionService");
 const { isAdminEmail } = require("../utils/accessControl");
 const { getUserProfile, registerOrLoginUser, updateUserPreferences } = require("../services/userService");
 
@@ -37,12 +38,15 @@ async function registerUser(request, response, next) {
   try {
     console.log("[user-controller] POST /user/register called");
     const result = await registerOrLoginUser(request.body);
+    const session = await createSession(result.user.email);
 
     response.status(result.action === "register" ? 201 : 200).json({
       success: true,
       action: result.action,
       message: result.action === "register" ? "User registered successfully." : "Login successful.",
-      ...buildUserPayload(result.user)
+      ...buildUserPayload(result.user),
+      sessionToken: session.token,
+      sessionExpiresAt: session.expiresAt
     });
 
     dispatchProfileEmails(result.action, result.user, "summary");
@@ -106,8 +110,24 @@ async function updatePreferences(request, response, next) {
   return handleNotificationSettingsUpdate(request, response, next, "POST /user/preferences");
 }
 
+async function logoutUser(request, response, next) {
+  try {
+    if (request.sessionToken) {
+      await revokeSession(request.sessionToken);
+    }
+
+    response.json({
+      success: true,
+      message: "Logged out successfully."
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getProfile,
+  logoutUser,
   registerUser,
   updatePreferences,
   updateProfile

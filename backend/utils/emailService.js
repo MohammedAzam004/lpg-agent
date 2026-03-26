@@ -1,4 +1,6 @@
 const nodemailer = require("nodemailer");
+let cachedTransporter = null;
+let cachedTransportSignature = "";
 
 const EMAIL_COPY = {
   en: {
@@ -91,7 +93,13 @@ function createTransporter() {
     return null;
   }
 
-  return nodemailer.createTransport({
+  const nextSignature = `${EMAIL_USER}:${EMAIL_PASS}`;
+
+  if (cachedTransporter && cachedTransportSignature === nextSignature) {
+    return cachedTransporter;
+  }
+
+  cachedTransporter = nodemailer.createTransport({
     service: "gmail",
     connectionTimeout: 10000,
     greetingTimeout: 10000,
@@ -101,6 +109,9 @@ function createTransporter() {
       pass: EMAIL_PASS
     }
   });
+
+  cachedTransportSignature = nextSignature;
+  return cachedTransporter;
 }
 
 function formatAvailability(store) {

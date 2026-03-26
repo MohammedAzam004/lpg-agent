@@ -135,6 +135,7 @@ async function createStoreEntry(request, response, next) {
   try {
     console.log("POST /stores called");
     const store = await createStore(request.body);
+    await processImmediateRequestNotifications();
     response.status(201).json({
       success: true,
       message: "Store created successfully.",
@@ -181,6 +182,7 @@ async function importStorePdfEntry(request, response, next) {
   try {
     console.log(`POST /stores/import/pdf called by ${request.requesterEmail || "unknown user"}`);
     const importSummary = await importStoresFromPdf(request.file);
+    await processImmediateRequestNotifications();
     response.status(201).json({
       success: true,
       message: `Imported ${importSummary.importedCount} LPG stores from ${importSummary.sourceName}.`,

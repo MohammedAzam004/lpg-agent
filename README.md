@@ -14,7 +14,7 @@ The project combines:
 - an AI-assisted LPG chatbot with safe backend filtering
 - store tracking with price, stock, availability, and location data
 - scheduled email notifications and request fulfillment
-- a simple user profile and notification settings flow
+- a session-based user profile and notification settings flow
 - an admin portal for store, user, and request management
 
 The chatbot does not invent LPG stores. All results are filtered against the real JSON store dataset in the backend.
@@ -26,6 +26,7 @@ The chatbot does not invent LPG stores. All results are filtered against the rea
 - LPG store search by city, state, price, distance, and availability
 - best-store recommendation with explanation
 - out-of-stock request tracking and stock-available email alerts
+- session-protected chat, request, booking, profile, and admin APIs
 - notification preferences with max price and max distance filters
 - booking and request history tracking
 - admin portal with store management, user management, request tracking, and AI insights
@@ -94,6 +95,7 @@ Users can register or log in using email without a password. Each profile stores
 - `maxDistance`
 - `notificationsEnabled`
 - `preferredLanguage`
+- `sessionToken` returned by the backend and stored in the browser for protected actions
 - `role`
 - `isAdmin`
 
@@ -107,6 +109,7 @@ The scheduler runs every 2 hours in production and checks:
 - periodic user digest emails
 
 Alerts respect user filters such as max price and max distance.
+Store-specific request watches can also trigger immediate user mail when an admin restocks a requested branch.
 
 ### 4. Admin Workspace
 
@@ -149,11 +152,12 @@ docs/
 - Requests: [backend/data/requests.json](D:/lpg-agengt/backend/data/requests.json)
 - Bookings: [backend/data/bookings.json](D:/lpg-agengt/backend/data/bookings.json)
 - Chat memory: [backend/data/chatMemory.json](D:/lpg-agengt/backend/data/chatMemory.json)
+- Auth sessions: [backend/data/authSessions.json](D:/lpg-agengt/backend/data/authSessions.json)
 
 For GitHub privacy and cleanliness:
 
 - `stores.json` and `previousStores.json` contain shareable LPG dataset content
-- `users.json`, `requests.json`, `bookings.json`, and `chatMemory.json` are intentionally reset to empty arrays in the repository
+- `users.json`, `requests.json`, `bookings.json`, `chatMemory.json`, and `authSessions.json` are intentionally reset to empty arrays in the repository
 
 ## API Summary
 
@@ -172,6 +176,7 @@ For GitHub privacy and cleanliness:
 - `GET /user/profile`
 - `POST /user/preferences`
 - `PUT /user/profile`
+- `POST /user/logout`
 - `GET /request`
 - `POST /request`
 - `DELETE /request/:id`
@@ -253,6 +258,7 @@ http://localhost:5173
 
 - The frontend is configured to use the deployed Render backend by default.
 - Local development can override the backend URL through `VITE_API_BASE_URL`.
+- Frontend route refreshes are handled through [frontend/vercel.json](D:/lpg-agengt/frontend/vercel.json) so deployed pages like `/chat` and `/profile` resolve correctly.
 - Runtime `.env` files are ignored by Git.
 - Real email delivery requires valid Gmail SMTP credentials.
 - If Gemini is not configured, the chatbot falls back to backend parsing rules.
@@ -262,6 +268,7 @@ http://localhost:5173
 - API keys and email credentials are not stored in tracked source files.
 - Admin access is not hardcoded to a private email inside the frontend anymore.
 - Runtime user data is not shipped in the repo.
+- Protected APIs now rely on a backend-issued session token instead of trusting a raw email header.
 - Local runtime files remain private through `.gitignore`.
 
 ## Screenshots
@@ -279,7 +286,7 @@ Suggested screenshots:
 ## Future Improvements
 
 - replace JSON storage with MongoDB or PostgreSQL
-- add proper auth with JWT or OAuth
+- replace local session storage with Redis, JWT, or OAuth
 - add automated test coverage
 - add Docker deployment
 - add real-time updates with WebSockets

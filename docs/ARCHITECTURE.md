@@ -49,6 +49,7 @@ Important files:
 - [backend/app.js](D:/lpg-agengt/backend/app.js)
 - [backend/server.js](D:/lpg-agengt/backend/server.js)
 - [backend/utils/accessControl.js](D:/lpg-agengt/backend/utils/accessControl.js)
+- [backend/services/sessionService.js](D:/lpg-agengt/backend/services/sessionService.js)
 
 ## Service Layer
 
@@ -92,7 +93,7 @@ Tracked repository data:
 
 - store dataset
 - previous store snapshot
-- empty runtime templates for users, requests, bookings, and chat memory
+- empty runtime templates for users, requests, bookings, chat memory, and auth sessions
 
 This design keeps the repository clean while still allowing the app to run immediately after cloning.
 
@@ -120,9 +121,22 @@ The admin identity comes from:
 
 This allows private admin configuration without exposing personal emails in tracked code.
 
+## Session Security
+
+Protected backend routes now require a backend-issued session token instead of a raw email header.
+
+Flow:
+
+1. user registers or logs in through `POST /user/register`
+2. backend creates a session record in [backend/data/authSessions.json](D:/lpg-agengt/backend/data/authSessions.json)
+3. frontend stores the returned session token locally
+4. protected routes use `Authorization: Bearer <token>`
+5. admin access is derived from the session user email plus `ADMIN_EMAIL`
+
 ## Deployment Model
 
 - Frontend hosted on Vercel
 - Backend hosted on Render
 - Frontend default API base points to the deployed Render backend
 - local development can still override URLs with `.env` files
+- Vercel route refreshes are handled by [frontend/vercel.json](D:/lpg-agengt/frontend/vercel.json)
