@@ -312,6 +312,29 @@ async function sendLoginGreetingEmail(user) {
   });
 }
 
+async function sendAppOverviewEmail(user) {
+  const copy = getLanguageCopy(user.preferredLanguage);
+
+  return dispatchEmail({
+    recipients: user.email,
+    subject: "How to use LPG Smart Assistant",
+    text: [
+      (copy.appInfoGreeting || copy.loginGreeting || copy.welcomeGreeting)(user.name),
+      "",
+      copy.appInfoIntro || "Here is a quick guide to the main things you can do in the app.",
+      "",
+      "1. Search nearby LPG stores by city, price, or distance.",
+      "2. Save your notification preferences for price and distance.",
+      "3. Use 'Notify when available' for out-of-stock LPG branches.",
+      "4. Track your bookings and requests from the dashboard.",
+      "5. Receive LPG update emails every 2 hours when matching stores are found.",
+      "",
+      "- LPG Smart System"
+    ].join("\n"),
+    label: `app overview for ${user.email}`
+  });
+}
+
 async function sendPreferenceSummaryEmail(user, mode = "summary") {
   const copy = getLanguageCopy(user.preferredLanguage);
   const isUpdate = mode === "updated";
@@ -439,10 +462,31 @@ async function sendUserLpgDigestEmail(user, summary = {}) {
   });
 }
 
+async function sendOtpEmail(user, otpCode) {
+  return dispatchEmail({
+    recipients: user.email,
+    subject: "Your LPG Smart Assistant OTP",
+    text: [
+      `Hello ${user.name || "there"},`,
+      "",
+      "Use the OTP below to complete your sign-in to LPG Smart Assistant.",
+      "",
+      `OTP: ${otpCode}`,
+      "",
+      "This OTP will expire in 10 minutes.",
+      "",
+      "- LPG Smart System"
+    ].join("\n"),
+    label: `otp email for ${user.email}`
+  });
+}
+
 module.exports = {
+  sendAppOverviewEmail,
   sendAvailabilityDigestEmail,
   sendAvailabilityEmail,
   sendLoginGreetingEmail,
+  sendOtpEmail,
   sendPeriodicUpdateEmail,
   sendPreferenceSummaryEmail,
   sendRequestedLpgAvailableEmail,

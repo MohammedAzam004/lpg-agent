@@ -52,6 +52,7 @@ function StoreCard({
   const notifyLabel = hasExistingNotifyRequest ? text.alreadyRequested : text.notifyWhenAvailable;
   const bookingLabel = hasExistingBookingRequest ? (text.requestSentButton || "Request sent") : text.requestButton;
   const shouldRenderFooter = showBookingButton || showNotifyButton || showMapButton;
+  const displayDistance = Number.isFinite(Number(store.distanceFromUser)) ? store.distanceFromUser : store.distance;
 
   function handleCardClick() {
     if (isInteractive) {
@@ -110,7 +111,7 @@ function StoreCard({
         </div>
         <div>
           <span>{text.distance}</span>
-          <strong>{store.distance} km</strong>
+          <strong>{displayDistance} km</strong>
         </div>
         <div>
           <span>{text.price}</span>

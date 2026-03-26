@@ -1,6 +1,6 @@
 # AI-Powered LPG Smart Assistant
 
-AI-Powered LPG Smart Assistant is a full-stack LPG availability platform built with React, Node.js, and Express. It helps users discover LPG branches, compare prices, chat with an AI assistant, request alerts for out-of-stock stores, receive scheduled email updates, and manage operations through a dedicated admin workspace.
+AI-Powered LPG Smart Assistant is a full-stack LPG availability platform built with React, Node.js, Express, and Firebase Authentication. It helps users discover LPG branches, compare prices, chat with an AI assistant, request alerts for out-of-stock stores, receive scheduled email updates, and manage operations through a dedicated admin workspace.
 
 ## Live Deployment
 
@@ -23,6 +23,8 @@ The chatbot does not invent LPG stores. All results are filtered against the rea
 
 - LPG chatbot with Gemini-assisted query understanding and safe rule-based fallback
 - short-term chatbot memory for follow-up questions like `cheapest one`
+- Firebase Authentication with Email/Password and Google sign-in
+- 6-digit email OTP verification for email/password sign-in before protected access
 - LPG store search by city, state, price, distance, and availability
 - best-store recommendation with explanation
 - out-of-stock request tracking and stock-available email alerts
@@ -36,11 +38,12 @@ The chatbot does not invent LPG stores. All results are filtered against the rea
 
 ## Tech Stack
 
-- Frontend: React, Vite, Chart.js
+- Frontend: React, Vite, Chart.js, Firebase Web SDK
 - Backend: Node.js, Express
 - Scheduler: node-cron
 - Email: Nodemailer
 - AI: Google Gemini API
+- Authentication: Firebase Authentication + Firebase Admin
 - Storage: JSON files
 
 ## System Architecture
@@ -48,7 +51,10 @@ The chatbot does not invent LPG stores. All results are filtered against the rea
 ```text
 React frontend
   -> API service layer
+  -> Firebase Authentication
   -> Express backend
+      -> Firebase token verification middleware
+      -> OTP verification service
       -> Controllers
       -> Services
           -> Chat service
@@ -82,18 +88,26 @@ Supported examples:
 
 ### 2. User Profile
 
-Users can register or log in using email without a password. Each profile stores:
+Users authenticate through Firebase using email/password or Google sign-in. Email/password sign-in is followed by a 6-digit OTP email verification step before protected routes are unlocked.
+
+Each synced profile stores:
 
 - `id`
 - `name`
 - `email`
 - `phone`
 - `address`
+- `firebaseUid`
+- `authProvider`
+- `emailVerified`
 - `createdAt`
+- `lastLoginAt`
 - `maxPrice`
 - `maxDistance`
 - `notificationsEnabled`
 - `preferredLanguage`
+- `latitude`
+- `longitude`
 - `role`
 - `isAdmin`
 
@@ -161,6 +175,10 @@ For GitHub privacy and cleanliness:
 
 - `GET /`
 - `GET /health`
+- `GET /auth/session`
+- `POST /auth/sync-user`
+- `POST /auth/send-otp`
+- `POST /auth/verify-otp`
 - `GET /stores`
 - `GET /stores/available`
 - `GET /stores/nearby`
@@ -203,6 +221,9 @@ PORT=5001
 SCHEDULER_TEST_MODE=false
 FRONTEND_URL=https://lpg-agent.vercel.app
 ADMIN_EMAIL=admin@example.com
+FIREBASE_PROJECT_ID=your_firebase_project_id
+FIREBASE_CLIENT_EMAIL=your_firebase_admin_client_email
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n"
 EMAIL_USER=your_email_here
 EMAIL_PASS=your_app_password
 EMAIL_TO=alerts@example.com
@@ -215,6 +236,12 @@ Use [frontend/.env.example](D:/lpg-agengt/frontend/.env.example)
 
 ```env
 VITE_API_BASE_URL=https://lpg-agent.onrender.com
+VITE_FIREBASE_API_KEY=your_firebase_web_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_firebase_app_id
 ```
 
 ## Local Development

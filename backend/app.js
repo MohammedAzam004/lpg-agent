@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const storeRoutes = require("./routes/storeRoutes");
 const chatRoutes = require("./routes/chatRoutes");
+const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const requestRoutes = require("./routes/requestRoutes");
@@ -18,6 +19,7 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 app.use(cors({
+  allowedHeaders: ["Content-Type", "Authorization", "x-user-email"],
   origin(origin, callback) {
     const normalizedOrigin = normalizeOrigin(origin);
 
@@ -41,6 +43,7 @@ app.get("/health", (request, response) => {
 });
 
 app.use("/stores", storeRoutes);
+app.use("/auth", authRoutes);
 app.use("/chat", chatRoutes);
 app.use("/user", userRoutes);
 app.use("/bookings", bookingRoutes);

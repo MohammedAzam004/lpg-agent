@@ -1,9 +1,10 @@
 const {
+  sendAppOverviewEmail,
   sendLoginGreetingEmail,
   sendPreferenceSummaryEmail,
   sendWelcomeEmail
 } = require("../utils/emailService");
-const { isAdminEmail } = require("../utils/accessControl");
+const { isAdminEmail } = require("../utils/adminAccess");
 const { getUserProfile, registerOrLoginUser, updateUserPreferences } = require("../services/userService");
 
 function buildUserPayload(user) {
@@ -15,9 +16,9 @@ function buildUserPayload(user) {
 
 function dispatchProfileEmails(mode, user, preferenceMode = "summary") {
   const emailTasks = mode === "register"
-    ? [sendWelcomeEmail(user), sendPreferenceSummaryEmail(user, preferenceMode)]
+    ? [sendWelcomeEmail(user), sendAppOverviewEmail(user)]
     : mode === "login"
-      ? [sendLoginGreetingEmail(user), sendPreferenceSummaryEmail(user, preferenceMode)]
+      ? [sendLoginGreetingEmail(user), sendAppOverviewEmail(user)]
       : [sendPreferenceSummaryEmail(user, preferenceMode)];
 
   Promise.allSettled(emailTasks)
@@ -84,7 +85,6 @@ async function handleNotificationSettingsUpdate(request, response, next, routeLa
       ...request.body,
       email: request.requesterEmail
     });
-    await sendPreferenceSummaryEmail(user, "updated");
 
     response.json({
       success: true,
