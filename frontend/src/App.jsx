@@ -1,13 +1,15 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AdminPanel from "./components/AdminPanel";
 import AnalyticsPanel from "./components/AnalyticsPanel";
-import ChatMessage from "./components/ChatMessage";
-import CylinderLogo from "./components/CylinderLogo";
+import AppNavigation from "./components/AppNavigation";
+import BookingPanel from "./components/BookingPanel";
+import ChatWorkspace from "./components/ChatWorkspace";
+import FloatingChatbot from "./components/FloatingChatbot";
 import NotificationSettingsPanel from "./components/NotificationSettingsPanel";
 import ProfilePanel from "./components/ProfilePanel";
-import QuickActions from "./components/QuickActions";
 import RequestHistoryPanel from "./components/RequestHistoryPanel";
-import StoreCard from "./components/StoreCard";
+import StoreBoard from "./components/StoreBoard";
 import TrendCharts from "./components/TrendCharts";
 import { getUiText } from "./i18n";
 import {
@@ -34,11 +36,17 @@ import {
   updateStoreRecord,
   updateUserProfile
 } from "./services/api";
+import AdminPage from "./pages/AdminPage";
+import BookingsPage from "./pages/BookingsPage";
+import ChatPage from "./pages/ChatPage";
+import HomePage from "./pages/HomePage";
+import ProfilePage from "./pages/ProfilePage";
+import RequestsPage from "./pages/RequestsPage";
 
 const USER_EMAIL_STORAGE_KEY = "lpg-smart-user-email";
 const LANGUAGE_STORAGE_KEY = "lpg-smart-language";
 const CHAT_SESSION_STORAGE_KEY = "lpg-smart-chat-session";
-const WORKSPACE_MODE_STORAGE_KEY = "lpg-smart-workspace-mode";
+const CHAT_MESSAGES_STORAGE_KEY = "lpg-smart-chat-messages";
 
 const initialProfileForm = {
   name: "",
@@ -64,6 +72,42 @@ const initialAdminForm = {
   stockCount: "",
   availability: true
 };
+
+function RequireAuth({ isAuthenticated, children }) {
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/profile"
+        replace
+        state={{ reason: "login", from: location.pathname }}
+      />
+    );
+  }
+
+  return children;
+}
+
+function RequireAdmin({ isAuthenticated, isAdmin, children }) {
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/profile"
+        replace
+        state={{ reason: "login", from: location.pathname }}
+      />
+    );
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace state={{ reason: "admin" }} />;
+  }
+
+  return children;
+}
 
 function getUniqueCount(items, key) {
   return new Set(items.map((item) => item[key]).filter(Boolean)).size;
@@ -145,8 +189,53 @@ function createInitialMessage(language) {
     explanation: null,
     stores: [],
     recommendation: null,
-    alternatives: []
+    alternatives: [],
+    sectionTarget: null,
+    sectionLabel: null
   };
+}
+
+function normalizeStoredMessage(message) {
+  if (!message || (message.role !== "user" && message.role !== "bot") || typeof message.text !== "string") {
+    return null;
+  }
+
+  return {
+    id: message.id || `${message.role}-${Date.now()}-${Math.random()}`,
+    role: message.role,
+    text: message.text,
+    explanation: message.explanation || null,
+    stores: Array.isArray(message.stores) ? message.stores : [],
+    recommendation: message.recommendation || null,
+    alternatives: Array.isArray(message.alternatives) ? message.alternatives : [],
+    sectionTarget: message.sectionTarget || null,
+    sectionLabel: message.sectionLabel || null
+  };
+}
+
+function loadStoredMessages(language) {
+  try {
+    const rawMessages = window.localStorage.getItem(CHAT_MESSAGES_STORAGE_KEY);
+
+    if (!rawMessages) {
+      return [createInitialMessage(language)];
+    }
+
+    const parsedMessages = JSON.parse(rawMessages);
+
+    if (!Array.isArray(parsedMessages) || !parsedMessages.length) {
+      return [createInitialMessage(language)];
+    }
+
+    const normalizedMessages = parsedMessages
+      .map(normalizeStoredMessage)
+      .filter(Boolean)
+      .slice(-30);
+
+    return normalizedMessages.length ? normalizedMessages : [createInitialMessage(language)];
+  } catch (error) {
+    return [createInitialMessage(language)];
+  }
 }
 
 function getOrCreateChatSessionId() {
@@ -162,14 +251,15 @@ function getOrCreateChatSessionId() {
 }
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [chatSessionId] = useState(() => getOrCreateChatSessionId());
   const [language, setLanguage] = useState(() => window.localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en");
-  const [workspaceMode, setWorkspaceMode] = useState(() => window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY) || "user");
   const uiText = useMemo(() => getUiText(language), [language]);
   const [locationInput, setLocationInput] = useState("");
   const [activeLocation, setActiveLocation] = useState("");
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState(() => [createInitialMessage(language)]);
+  const [messages, setMessages] = useState(() => loadStoredMessages(window.localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en"));
   const [stores, setStores] = useState([]);
   const [availableStores, setAvailableStores] = useState([]);
   const [recommendedStore, setRecommendedStore] = useState(null);
@@ -210,20 +300,23 @@ function App() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [highlightedStoreId, setHighlightedStoreId] = useState(null);
+  const [floatingChatOpen, setFloatingChatOpen] = useState(false);
+  const [pendingStoreFocusId, setPendingStoreFocusId] = useState(null);
+  const [pendingSectionFocus, setPendingSectionFocus] = useState(null);
   const chatWindowRef = useRef(null);
   const recognitionRef = useRef(null);
   const storeCardRefs = useRef({});
   const highlightTimeoutRef = useRef(null);
-  const heroSectionRef = useRef(null);
-  const profileSectionRef = useRef(null);
-  const notificationSectionRef = useRef(null);
-  const chatSectionRef = useRef(null);
-  const storesSectionRef = useRef(null);
-  const requestsSectionRef = useRef(null);
-  const adminSectionRef = useRef(null);
+  const homePageRef = useRef(null);
+  const storesPageRef = useRef(null);
+  const profilePageRef = useRef(null);
+  const notificationPageRef = useRef(null);
+  const chatPageRef = useRef(null);
+  const requestsPageRef = useRef(null);
+  const bookingsPageRef = useRef(null);
+  const adminPageRef = useRef(null);
   const isAuthenticated = Boolean(user?.email);
   const isAdmin = Boolean(user?.isAdmin || user?.role === "admin");
-  const isAdminWorkspace = isAdmin && workspaceMode === "admin";
   const stateCount = getUniqueCount(stores, "state");
   const cityCount = getUniqueCount(stores, "city");
   const unavailableStoresCount = stores.filter((store) => !store.availability).length;
@@ -234,27 +327,8 @@ function App() {
   }, [language]);
 
   useEffect(() => {
-    if (!isAdmin) {
-      if (workspaceMode !== "user") {
-        setWorkspaceMode("user");
-      }
-
-      window.localStorage.removeItem(WORKSPACE_MODE_STORAGE_KEY);
-      return;
-    }
-
-    const savedWorkspaceMode = window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY);
-
-    if (!savedWorkspaceMode) {
-      window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, "admin");
-      if (workspaceMode !== "admin") {
-        setWorkspaceMode("admin");
-      }
-      return;
-    }
-
-    window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, workspaceMode);
-  }, [isAdmin, workspaceMode]);
+    window.localStorage.setItem(CHAT_MESSAGES_STORAGE_KEY, JSON.stringify(messages.slice(-30)));
+  }, [messages]);
 
   useEffect(() => {
     if (messages.length === 1 && messages[0].id === "welcome-message") {
@@ -303,7 +377,7 @@ function App() {
       top: chatWindowRef.current.scrollHeight,
       behavior: "smooth"
     });
-  }, [messages, chatLoading]);
+  }, [messages, chatLoading, floatingChatOpen, location.pathname]);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -367,9 +441,6 @@ function App() {
           });
           setPreferenceForm(buildPreferenceForm(savedUser));
           setLanguage(savedUser.preferredLanguage || language);
-          if (savedUser.isAdmin || savedUser.role === "admin") {
-            setWorkspaceMode(window.localStorage.getItem(WORKSPACE_MODE_STORAGE_KEY) || "admin");
-          }
           setProfileNotice(
             getUiText(savedUser.preferredLanguage || language).messages.welcomeBack(savedUser.name)
           );
@@ -558,6 +629,67 @@ function App() {
     };
   }, [isAdmin, user?.email]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setFloatingChatOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const sectionMap = {
+      home: homePageRef,
+      profile: profilePageRef,
+      alerts: notificationPageRef,
+      chat: chatPageRef,
+      stores: storesPageRef,
+      requests: requestsPageRef,
+      bookings: bookingsPageRef,
+      admin: adminPageRef
+    };
+
+    if (!pendingSectionFocus) {
+      return;
+    }
+
+    const targetRef = sectionMap[pendingSectionFocus];
+
+    if (targetRef?.current) {
+      targetRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+      setPendingSectionFocus(null);
+    }
+  }, [pendingSectionFocus, location.pathname, isAuthenticated, isAdmin]);
+
+  useEffect(() => {
+    if (!pendingStoreFocusId) {
+      return;
+    }
+
+    const targetCard = storeCardRefs.current[pendingStoreFocusId];
+
+    if (!targetCard) {
+      return;
+    }
+
+    targetCard.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+    setHighlightedStoreId(pendingStoreFocusId);
+
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current);
+    }
+
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedStoreId(null);
+    }, 2200);
+
+    setPendingStoreFocusId(null);
+  }, [pendingStoreFocusId, location.pathname, stores.length]);
+
   function handleProfileInputChange(event) {
     const { name, value } = event.target;
     setProfileForm((currentForm) => ({
@@ -615,13 +747,13 @@ function App() {
     setAdminInsights(insightsPayload);
   }
 
-  async function refreshRequestHistory() {
-    if (!user?.email) {
+  async function refreshRequestHistory(activeEmail = user?.email) {
+    if (!activeEmail) {
       setRequestHistory([]);
       return;
     }
 
-    const requests = await fetchRequestHistory(user.email);
+    const requests = await fetchRequestHistory(activeEmail);
     setRequestHistory(dedupeStoreRequests(requests));
   }
 
@@ -664,18 +796,15 @@ function App() {
       setPreferenceForm(buildPreferenceForm(resolvedUser));
       setLanguage(resolvedUser.preferredLanguage || language);
       window.localStorage.setItem(USER_EMAIL_STORAGE_KEY, resolvedUser.email);
-      if (resolvedUser.isAdmin || resolvedUser.role === "admin") {
-        setWorkspaceMode("admin");
-        window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, "admin");
-      } else {
-        setWorkspaceMode("user");
-      }
       setProfileNotice(
         response?.action === "register"
           ? uiText.messages.welcomeCreated(resolvedUser.name)
           : uiText.messages.welcomeBack(resolvedUser.name)
       );
       await refreshAdminInsights(resolvedUser);
+
+      const redirectPath = typeof location.state?.from === "string" ? location.state.from : "/";
+      navigate(redirectPath, { replace: true });
     } catch (submitError) {
       setProfileError(submitError.message || uiText.messages.profileSubmitError);
     } finally {
@@ -765,8 +894,11 @@ function App() {
     setAdminInsights(null);
     setAdminError("");
     setAdminNotice("");
+    setMessages([createInitialMessage(language)]);
+    setDraft("");
     window.localStorage.removeItem(USER_EMAIL_STORAGE_KEY);
-    window.localStorage.removeItem(WORKSPACE_MODE_STORAGE_KEY);
+    window.localStorage.removeItem(CHAT_MESSAGES_STORAGE_KEY);
+    navigate("/profile", { replace: true });
   }
 
   function handleLocationFilterSubmit(event) {
@@ -810,7 +942,7 @@ function App() {
 
   async function handleRequestStore(store) {
     if (!user?.email) {
-      setProfileError(uiText.loginRequiredPrompt);
+      navigate("/profile", { state: { reason: "login", from: location.pathname }, replace: true });
       return;
     }
 
@@ -836,7 +968,7 @@ function App() {
 
   async function handleNotifyWhenAvailable(store) {
     if (!user?.email) {
-      setProfileError(uiText.loginRequiredPrompt);
+      navigate("/profile", { state: { reason: "login", from: location.pathname }, replace: true });
       return;
     }
 
@@ -854,7 +986,9 @@ function App() {
       }
 
       setRequestHistory((currentRequests) => dedupeStoreRequests([savedRequest, ...currentRequests]));
-      await refreshAdminInsights();
+      refreshAdminInsights().catch(() => {
+        // Keep request creation responsive even if admin widgets fail to refresh.
+      });
       setRequestFeedback({
         type: "success",
         message: savedRequest.duplicate
@@ -1059,7 +1193,7 @@ function App() {
     }
 
     if (!user?.email) {
-      setProfileError(uiText.loginRequiredPrompt);
+      navigate("/profile", { state: { reason: "login", from: location.pathname }, replace: true });
       return;
     }
 
@@ -1070,7 +1204,9 @@ function App() {
       explanation: null,
       stores: [],
       recommendation: null,
-      alternatives: []
+      alternatives: [],
+      sectionTarget: null,
+      sectionLabel: null
     };
 
     setMessages((currentMessages) => [...currentMessages, userMessage]);
@@ -1094,11 +1230,19 @@ function App() {
         explanation: response?.explanation || null,
         stores: Array.isArray(response?.stores) ? response.stores : [],
         recommendation: response?.recommendation || null,
-        alternatives: Array.isArray(response?.alternatives) ? response.alternatives : []
+        alternatives: Array.isArray(response?.alternatives) ? response.alternatives : [],
+        sectionTarget: response?.sectionTarget || null,
+        sectionLabel: response?.sectionLabel || null
       };
 
       setMessages((currentMessages) => [...currentMessages, botMessage]);
       await refreshDashboard(response?.recommendation || null);
+
+      if (response?.sectionTarget) {
+        window.setTimeout(() => {
+          handleOpenSection(response.sectionTarget);
+        }, 180);
+      }
     } catch (submitError) {
       setError(submitError.message || uiText.messages.chatError);
     } finally {
@@ -1140,38 +1284,33 @@ function App() {
 
   function handleOpenStoreFromResponse(store) {
     const storeId = store?.id;
-    const targetCard = storeId ? storeCardRefs.current[storeId] : null;
 
-    if (!targetCard) {
+    if (!storeId) {
       return;
     }
 
-    targetCard.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
+    setPendingStoreFocusId(storeId);
 
-    setHighlightedStoreId(storeId);
-
-    if (highlightTimeoutRef.current) {
-      window.clearTimeout(highlightTimeoutRef.current);
+    if (location.pathname !== "/" && location.pathname !== "/chat") {
+      navigate("/");
     }
-
-    highlightTimeoutRef.current = window.setTimeout(() => {
-      setHighlightedStoreId(null);
-    }, 2200);
   }
 
-  function handleWorkspaceModeChange(nextMode) {
-    setWorkspaceMode(nextMode);
-    window.localStorage.setItem(WORKSPACE_MODE_STORAGE_KEY, nextMode);
-  }
+  function handleOpenSection(sectionTarget) {
+    const sectionMap = {
+      home: { route: "/", focus: "home" },
+      profile: { route: "/profile", focus: "profile" },
+      alerts: { route: "/profile", focus: "alerts" },
+      chat: { route: "/chat", focus: "chat" },
+      stores: { route: "/", focus: "stores" },
+      requests: { route: "/requests", focus: "requests" },
+      bookings: { route: "/bookings", focus: "bookings" },
+      admin: { route: "/admin", focus: "admin" }
+    };
 
-  function scrollToSection(sectionRef) {
-    sectionRef?.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
+    const target = sectionMap[sectionTarget] || sectionMap.home;
+    setPendingSectionFocus(target.focus);
+    navigate(target.route);
   }
 
   const requestStatusByStoreId = useMemo(() => (
@@ -1194,422 +1333,425 @@ function App() {
     }, {})
   ), [bookingHistory]);
 
-  const navigationItems = isAdminWorkspace
-    ? [
-      { key: "home", label: uiText.nav?.home || "Home", ref: heroSectionRef },
-      { key: "profile", label: uiText.nav?.profile || "Profile", ref: profileSectionRef },
-      { key: "admin", label: uiText.nav?.admin || "Admin", ref: adminSectionRef }
-    ]
-    : [
-      { key: "home", label: uiText.nav?.home || "Home", ref: heroSectionRef },
-      { key: "profile", label: uiText.nav?.profile || "Profile", ref: profileSectionRef },
-      ...(isAuthenticated ? [{ key: "alerts", label: uiText.nav?.alerts || "Alerts", ref: notificationSectionRef }] : []),
-      { key: "chat", label: uiText.nav?.chat || "Chat", ref: chatSectionRef },
-      { key: "stores", label: uiText.nav?.stores || "Stores", ref: storesSectionRef },
-      ...(isAuthenticated ? [{ key: "requests", label: uiText.nav?.requests || "Requests", ref: requestsSectionRef }] : [])
-    ];
+  const topBanner = error
+    ? <div className="banner banner--error">{error}</div>
+    : null;
 
-  return (
-    <main className="app-shell">
-      <section ref={heroSectionRef} id="home-section" className="hero-panel">
-        <div className="hero-panel__content">
-          <div className="hero-panel__toolbar">
-            <CylinderLogo />
-            <div className="hero-panel__controls">
-              {isAdmin && isAuthenticated && (
-                <div className="workspace-switch">
-                  <span>{uiText.adminTitle}</span>
-                  <div className="workspace-switch__controls">
-                    <button
-                      type="button"
-                      className={workspaceMode === "user" ? "workspace-switch__button workspace-switch__button--active" : "workspace-switch__button"}
-                      onClick={() => handleWorkspaceModeChange("user")}
-                    >
-                      {uiText.userWorkspaceLabel || "User Workspace"}
-                    </button>
-                    <button
-                      type="button"
-                      className={workspaceMode === "admin" ? "workspace-switch__button workspace-switch__button--active" : "workspace-switch__button"}
-                      onClick={() => handleWorkspaceModeChange("admin")}
-                    >
-                      {uiText.adminPortalLabel || "Admin Portal"}
-                    </button>
-                  </div>
-                </div>
-              )}
+  const loginRedirectNotice = location.pathname === "/profile" && location.state?.reason === "login";
 
-              <div className="language-switch">
-                <span>{uiText.languageLabel}</span>
-                <div className="language-switch__controls">
-                  <button
-                    type="button"
-                    className={language === "en" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
-                    onClick={() => setLanguage("en")}
-                  >
-                    {uiText.english}
-                  </button>
-                  <button
-                    type="button"
-                    className={language === "hi" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
-                    onClick={() => setLanguage("hi")}
-                  >
-                    {uiText.hindi}
-                  </button>
-                  <button
-                    type="button"
-                    className={language === "te" ? "language-switch__button language-switch__button--active" : "language-switch__button"}
-                    onClick={() => setLanguage("te")}
-                  >
-                    {uiText.telugu}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <h1>{uiText.heroTitle}</h1>
-          <p className="hero-panel__copy">{uiText.heroCopy}</p>
-        </div>
-
-        <form className="hero-panel__filters" onSubmit={handleLocationFilterSubmit}>
-          <label htmlFor="location">{uiText.filterLabel}</label>
-          <input
-            id="location"
-            type="text"
-            placeholder={uiText.filterPlaceholder}
-            value={locationInput}
-            onChange={(event) => setLocationInput(event.target.value)}
-          />
-          <div className="hero-panel__filter-actions">
-            <button type="submit">{uiText.applyFilter}</button>
-            <button type="button" className="hero-panel__secondary-button" onClick={handleLocationFilterReset}>
-              {uiText.clearFilter}
-            </button>
-          </div>
-          <p>
-            {activeLocation
-              ? uiText.activeFilter(activeLocation)
-              : uiText.filterTip}
-          </p>
-        </form>
-      </section>
-
-      <nav className="section-nav" aria-label="Page sections">
-        {navigationItems.map((item) => (
-          <button key={item.key} type="button" className="section-nav__button" onClick={() => scrollToSection(item.ref)}>
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      <div ref={profileSectionRef} id="profile-section">
-        <ProfilePanel
-          form={profileForm}
-          user={user}
-          isAdmin={isAdmin}
-          loading={profileLoading}
-          error={profileError}
-          notice={profileNotice}
-          language={language}
-          onChange={handleProfileInputChange}
-          onSubmit={handleProfileSubmit}
-          onReset={handleProfileReset}
-        />
+  const heroSection = (
+    <section ref={homePageRef} className="hero-panel hero-panel--page">
+      <div className="hero-panel__content">
+        <h1>{uiText.heroTitle}</h1>
+        <p className="hero-panel__copy">{uiText.heroCopy}</p>
       </div>
 
-      {!isAuthenticated && (
-        <section className="login-gate-panel">
-          <div className="banner banner--info banner--animated">
-            <strong>{uiText.loginRequiredPrompt}</strong>
-            <p>{uiText.loginRequiredCopy}</p>
-          </div>
-        </section>
-      )}
-
-      {isAuthenticated && !isAdminWorkspace && (
-        <div ref={notificationSectionRef} id="alerts-section">
-          <NotificationSettingsPanel
-            user={user}
-            settings={preferenceForm}
-            saving={preferenceSaving}
-            feedback={notificationFeedback}
-            language={language}
-            onChange={handlePreferenceChange}
-            onSubmit={handlePreferenceSubmit}
-          />
+      <form className="hero-panel__filters" onSubmit={handleLocationFilterSubmit}>
+        <label htmlFor="location">{uiText.filterLabel}</label>
+        <input
+          id="location"
+          type="text"
+          placeholder={uiText.filterPlaceholder}
+          value={locationInput}
+          onChange={(event) => setLocationInput(event.target.value)}
+        />
+        <div className="hero-panel__filter-actions">
+          <button type="submit">{uiText.applyFilter}</button>
+          <button type="button" className="hero-panel__secondary-button" onClick={handleLocationFilterReset}>
+            {uiText.clearFilter}
+          </button>
         </div>
-      )}
+        <p>
+          {activeLocation
+            ? uiText.activeFilter(activeLocation)
+            : uiText.filterTip}
+        </p>
+      </form>
+    </section>
+  );
 
-      {error && <div className="banner banner--error">{error}</div>}
-      {adminNotice && <div className="banner banner--success banner--animated">{adminNotice}</div>}
-      {adminError && <div className="banner banner--error">{adminError}</div>}
-
-      {isAdminWorkspace ? (
-        <div ref={adminSectionRef} id="admin-section">
-          <section className="admin-workspace-hero">
-            <div>
-              <p className="analytics-panel__eyebrow">{uiText.adminPortalLabel || "Admin Portal"}</p>
-              <h2>{uiText.admin.portalTitle || "Admin control center"}</h2>
-              <p className="admin-workspace-hero__copy">
-                {uiText.admin.portalCopy || "Manage LPG branches, imports, users, requests, and platform insights from a dedicated operations workspace."}
-              </p>
-            </div>
-            <div className="admin-workspace-hero__badge">{user?.email}</div>
-          </section>
-
-          <section className="dashboard-grid dashboard-grid--admin">
-            <article className="summary-card summary-card--admin">
-              <p className="summary-card__label">{uiText.admin.trackedStoresLabel || "Tracked Stores"}</p>
-              <h2>{dashboardLoading ? "..." : stores.length}</h2>
-              <p>{uiText.trackedCopy(activeLocation)}</p>
-            </article>
-            <article className="summary-card summary-card--admin">
-              <p className="summary-card__label">{uiText.admin.availableStoresLabel || "Available Now"}</p>
-              <h2>{dashboardLoading ? "..." : availableStores.length}</h2>
-              <p>{uiText.liveStoresCopy(activeLocation)}</p>
-            </article>
-            <article className="summary-card summary-card--admin">
-              <p className="summary-card__label">{uiText.admin.outOfStockLabel || "Out of Stock"}</p>
-              <h2>{dashboardLoading ? "..." : unavailableStoresCount}</h2>
-              <p>{stateCount} states | {cityCount} cities</p>
-            </article>
-            <article className="summary-card summary-card--admin">
-              <p className="summary-card__label">{uiText.admin.registeredUsersLabel || "Registered Users"}</p>
-              <h2>{adminUsersLoading ? "..." : adminUsers.length}</h2>
-              <p>{uiText.admin.totalUsersCount ? uiText.admin.totalUsersCount(adminUsers.length) : `${adminUsers.length} users`}</p>
-            </article>
-            <article className="summary-card summary-card--admin">
-              <p className="summary-card__label">{uiText.admin.activeRequestsLabel || "Open Requests"}</p>
-              <h2>{adminRequestsLoading ? "..." : openAdminRequestsCount}</h2>
-              <p>{uiText.admin.requestCount ? uiText.admin.requestCount(adminRequests.length) : `${adminRequests.length} requests`}</p>
-            </article>
-          </section>
-
-          <AdminPanel
-            language={language}
-            stores={stores}
-            users={adminUsers}
-            requests={adminRequests}
-            insights={adminInsights}
-            usersLoading={adminUsersLoading}
-            requestsLoading={adminRequestsLoading}
-            userDeletingId={adminUserDeletingId}
-            requestDeletingId={adminRequestDeletingId}
-            form={adminForm}
-            saving={adminSaving}
-            deletingId={adminDeletingId}
-            editingStoreId={editingStoreId}
-            importingPdf={adminImportingPdf}
-            onChange={handleAdminInputChange}
-            onImportPdf={handleImportPdf}
-            onSubmit={handleAdminSubmit}
-            onEdit={handleEditStore}
-            onDelete={handleDeleteStore}
-            onCancelEdit={handleCancelAdminEdit}
-            onDeleteUser={handleDeleteAdminUser}
-            onDeleteRequest={handleDeleteAdminRequest}
-          />
-        </div>
-      ) : (
-        <>
-      <section className="dashboard-grid">
-        <article className="summary-card">
-          <p className="summary-card__label">{uiText.summaryRecommended}</p>
-          {dashboardLoading ? (
-            <div className="summary-card__loading">
-              <div className="skeleton skeleton--title" />
-              <div className="skeleton skeleton--text" />
-              <div className="skeleton skeleton--text" />
-            </div>
-          ) : recommendedStore ? (
-            <>
-              <h2>{recommendedStore.name}</h2>
-              <p>
-                {[recommendedStore.city, recommendedStore.state].filter(Boolean).join(", ")} | {recommendedStore.location} | {recommendedStore.distance} km | Rs. {recommendedStore.price}
-              </p>
-              <p className="summary-card__detail">
-                {uiText.stockLabel}: {typeof recommendedStore.stockCount === "number" ? `${recommendedStore.stockCount} ${uiText.cylinders}` : uiText.available}
-              </p>
-              {recommendedStore.prediction && (
-                <p className="summary-card__detail">{uiText.predictionLabel}: {recommendedStore.prediction}</p>
-              )}
-            </>
-          ) : (
-            <>
-              <h2>{uiText.noStockTitle}</h2>
-              <p>{uiText.noStockCopy}</p>
-            </>
-          )}
-        </article>
-        <article className="summary-card">
-          <p className="summary-card__label">{uiText.summaryLive}</p>
-          <h2>{dashboardLoading ? "..." : availableStores.length}</h2>
-          <p>{uiText.liveStoresCopy(activeLocation)}</p>
-        </article>
-
-        <article className="summary-card">
-          <p className="summary-card__label">{uiText.summaryTracked}</p>
-          <h2>{dashboardLoading ? "..." : stores.length}</h2>
-          <p>{uiText.trackedCopy(activeLocation)}</p>
-          {!dashboardLoading && !!stores.length && (
-            <p className="summary-card__detail">{stateCount} states | {cityCount} cities</p>
-          )}
-        </article>
-      </section>
-
-      <AnalyticsPanel stores={stores} loading={dashboardLoading} language={language} />
-      <TrendCharts trends={trendData} loading={dashboardLoading} language={language} />
-      <section className="workspace-grid">
-        <div ref={chatSectionRef} id="chat-section" className="chat-panel">
-          <div className="chat-panel__header">
-            <div>
-              <p className="chat-panel__eyebrow">Assistant</p>
-              <h2>{uiText.assistantTitle}</h2>
-            </div>
-            <QuickActions onSelect={submitMessage} actions={uiText.quickActions} />
+  const dashboardSummaries = (
+    <section className="dashboard-grid">
+      <article className="summary-card">
+        <p className="summary-card__label">{uiText.summaryRecommended}</p>
+        {dashboardLoading ? (
+          <div className="summary-card__loading">
+            <div className="skeleton skeleton--title" />
+            <div className="skeleton skeleton--text" />
+            <div className="skeleton skeleton--text" />
           </div>
+        ) : recommendedStore ? (
+          <>
+            <h2>{recommendedStore.name}</h2>
+            <p>
+              {[recommendedStore.city, recommendedStore.state].filter(Boolean).join(", ")} | {recommendedStore.location} | {recommendedStore.distance} km | Rs. {recommendedStore.price}
+            </p>
+            <p className="summary-card__detail">
+              {uiText.stockLabel}: {typeof recommendedStore.stockCount === "number" ? `${recommendedStore.stockCount} ${uiText.cylinders}` : uiText.available}
+            </p>
+            {recommendedStore.prediction && (
+              <p className="summary-card__detail">{uiText.predictionLabel}: {recommendedStore.prediction}</p>
+            )}
+          </>
+        ) : (
+          <>
+            <h2>{uiText.noStockTitle}</h2>
+            <p>{uiText.noStockCopy}</p>
+          </>
+        )}
+      </article>
+      <article className="summary-card">
+        <p className="summary-card__label">{uiText.summaryLive}</p>
+        <h2>{dashboardLoading ? "..." : availableStores.length}</h2>
+        <p>{uiText.liveStoresCopy(activeLocation)}</p>
+      </article>
 
-          <div ref={chatWindowRef} className="chat-window">
-            {messages.map((message) => (
-              <ChatMessage
-                key={message.id}
-                message={message}
-                language={language}
-                onOpenStore={handleOpenStoreFromResponse}
-                onRequestStore={handleRequestStore}
-                bookingStatusByStoreId={bookingStatusByStoreId}
-                requestPendingId={bookingPendingStoreId}
-                onNotifyStore={handleNotifyWhenAvailable}
-                notifyPendingId={notifyPendingStoreId}
-                requestStatusByStoreId={requestStatusByStoreId}
-              />
-            ))}
+      <article className="summary-card">
+        <p className="summary-card__label">{uiText.summaryTracked}</p>
+        <h2>{dashboardLoading ? "..." : stores.length}</h2>
+        <p>{uiText.trackedCopy(activeLocation)}</p>
+        {!dashboardLoading && !!stores.length && (
+          <p className="summary-card__detail">{stateCount} states | {cityCount} cities</p>
+        )}
+      </article>
+    </section>
+  );
 
-            {chatLoading && (
-              <div className="chat-message chat-message--bot">
-                <div className="chat-message__bubble chat-message__bubble--typing">
-                  <p className="chat-message__meta">{uiText.aiAssistant}</p>
-                  <div className="typing-indicator" aria-live="polite">
-                    <span className="typing-indicator__label">{uiText.typing}</span>
-                    <span className="typing-indicator__dots" aria-hidden="true">
-                      <span />
-                      <span />
-                      <span />
-                    </span>
+  const storeBoardElement = (
+    <div ref={storesPageRef}>
+      <StoreBoard
+        uiText={uiText}
+        activeLocation={activeLocation}
+        dashboardLoading={dashboardLoading}
+        stores={stores}
+        stateCount={stateCount}
+        cityCount={cityCount}
+        recommendedStore={recommendedStore}
+        highlightedStoreId={highlightedStoreId}
+        registerStoreCardRef={registerStoreCardRef}
+        onRequestStore={handleRequestStore}
+        bookingStatusByStoreId={bookingStatusByStoreId}
+        bookingPendingStoreId={bookingPendingStoreId}
+        onNotifyStore={handleNotifyWhenAvailable}
+        notifyPendingStoreId={notifyPendingStoreId}
+        requestStatusByStoreId={requestStatusByStoreId}
+        language={language}
+      />
+    </div>
+  );
+
+  const chatWorkspaceElement = (
+    <div ref={chatPageRef}>
+      <ChatWorkspace
+        uiText={uiText}
+        language={language}
+        messages={messages}
+        chatLoading={chatLoading}
+        chatWindowRef={chatWindowRef}
+        isAuthenticated={isAuthenticated}
+        draft={draft}
+        onDraftChange={setDraft}
+        onSubmit={handleSubmit}
+        onSelectQuickAction={submitMessage}
+        onVoiceInput={handleVoiceInput}
+        voiceSupported={voiceSupported}
+        listening={listening}
+        onOpenSection={handleOpenSection}
+        onOpenStore={handleOpenStoreFromResponse}
+        onRequestStore={handleRequestStore}
+        bookingStatusByStoreId={bookingStatusByStoreId}
+        bookingPendingStoreId={bookingPendingStoreId}
+        onNotifyStore={handleNotifyWhenAvailable}
+        notifyPendingStoreId={notifyPendingStoreId}
+        requestStatusByStoreId={requestStatusByStoreId}
+      />
+    </div>
+  );
+
+  const adminHeader = (
+    <section ref={adminPageRef} className="admin-workspace-hero">
+      <div>
+        <p className="analytics-panel__eyebrow">{uiText.adminPortalLabel || "Admin Portal"}</p>
+        <h2>{uiText.admin.portalTitle || "Admin control center"}</h2>
+        <p className="admin-workspace-hero__copy">
+          {uiText.admin.portalCopy || "Manage LPG branches, imports, users, requests, and platform insights from a dedicated operations workspace."}
+        </p>
+      </div>
+      <div className="admin-workspace-hero__badge">{user?.email}</div>
+    </section>
+  );
+
+  const adminSummaries = (
+    <section className="dashboard-grid dashboard-grid--admin">
+      <article className="summary-card summary-card--admin">
+        <p className="summary-card__label">{uiText.admin.trackedStoresLabel || "Tracked Stores"}</p>
+        <h2>{dashboardLoading ? "..." : stores.length}</h2>
+        <p>{uiText.trackedCopy(activeLocation)}</p>
+      </article>
+      <article className="summary-card summary-card--admin">
+        <p className="summary-card__label">{uiText.admin.availableStoresLabel || "Available Now"}</p>
+        <h2>{dashboardLoading ? "..." : availableStores.length}</h2>
+        <p>{uiText.liveStoresCopy(activeLocation)}</p>
+      </article>
+      <article className="summary-card summary-card--admin">
+        <p className="summary-card__label">{uiText.admin.outOfStockLabel || "Out of Stock"}</p>
+        <h2>{dashboardLoading ? "..." : unavailableStoresCount}</h2>
+        <p>{stateCount} states | {cityCount} cities</p>
+      </article>
+      <article className="summary-card summary-card--admin">
+        <p className="summary-card__label">{uiText.admin.registeredUsersLabel || "Registered Users"}</p>
+        <h2>{adminUsersLoading ? "..." : adminUsers.length}</h2>
+        <p>{uiText.admin.totalUsersCount ? uiText.admin.totalUsersCount(adminUsers.length) : `${adminUsers.length} users`}</p>
+      </article>
+      <article className="summary-card summary-card--admin">
+        <p className="summary-card__label">{uiText.admin.activeRequestsLabel || "Open Requests"}</p>
+        <h2>{adminRequestsLoading ? "..." : openAdminRequestsCount}</h2>
+        <p>{uiText.admin.requestCount ? uiText.admin.requestCount(adminRequests.length) : `${adminRequests.length} requests`}</p>
+      </article>
+    </section>
+  );
+
+  return (
+    <main className="app-shell app-shell--routed">
+      <AppNavigation
+        uiText={uiText}
+        isAuthenticated={isAuthenticated}
+        isAdmin={isAdmin}
+        user={user}
+        language={language}
+        onLanguageChange={setLanguage}
+      />
+
+      <div className="app-page">
+        {topBanner}
+        {adminNotice && location.pathname === "/admin" && <div className="banner banner--success banner--animated">{adminNotice}</div>}
+        {adminError && location.pathname === "/admin" && <div className="banner banner--error">{adminError}</div>}
+
+        <Routes>
+          <Route
+            path="/"
+            element={(
+              <RequireAuth isAuthenticated={isAuthenticated}>
+                <HomePage
+                  hero={heroSection}
+                  summaries={dashboardSummaries}
+                  analytics={<AnalyticsPanel stores={stores} loading={dashboardLoading} language={language} />}
+                  trends={<TrendCharts trends={trendData} loading={dashboardLoading} language={language} />}
+                  storeBoard={storeBoardElement}
+                />
+              </RequireAuth>
+            )}
+          />
+
+          <Route
+            path="/chat"
+            element={(
+              <RequireAuth isAuthenticated={isAuthenticated}>
+                <ChatPage
+                  intro={(
+                    <section className="page-hero page-hero--chat">
+                      <div>
+                        <p className="page-hero__eyebrow">{uiText.aiAssistant || "Assistant"}</p>
+                        <h1>{uiText.assistantTitle}</h1>
+                        <p>{uiText.heroCopy}</p>
+                      </div>
+                    </section>
+                  )}
+                  content={(
+                    <>
+                      {chatWorkspaceElement}
+                      {storeBoardElement}
+                    </>
+                  )}
+                />
+              </RequireAuth>
+            )}
+          />
+
+          <Route
+            path="/requests"
+            element={(
+              <RequireAuth isAuthenticated={isAuthenticated}>
+                <RequestsPage
+                  header={(
+                    <section ref={requestsPageRef} className="page-hero">
+                      <div>
+                        <p className="page-hero__eyebrow">{uiText.nav?.requests || "Requests"}</p>
+                        <h1>{uiText.requestHistoryTitle}</h1>
+                        <p>{uiText.requestHistoryCopy}</p>
+                      </div>
+                    </section>
+                  )}
+                  content={(
+                    <RequestHistoryPanel
+                      user={user}
+                      loading={requestHistoryLoading}
+                      deletingId={requestDeletingId}
+                      requests={requestHistory}
+                      feedback={requestFeedback}
+                      language={language}
+                      onRemove={handleRemoveRequest}
+                    />
+                  )}
+                />
+              </RequireAuth>
+            )}
+          />
+
+          <Route
+            path="/bookings"
+            element={(
+              <RequireAuth isAuthenticated={isAuthenticated}>
+                <BookingsPage
+                  header={(
+                    <section ref={bookingsPageRef} className="page-hero">
+                      <div>
+                        <p className="page-hero__eyebrow">{uiText.nav?.bookings || "Bookings"}</p>
+                        <h1>{uiText.requestHistoryTitle}</h1>
+                        <p>{uiText.requestHistoryCopy}</p>
+                      </div>
+                    </section>
+                  )}
+                  content={(
+                    <BookingPanel
+                      user={user}
+                      loading={bookingLoading}
+                      bookings={bookingHistory}
+                      language={language}
+                    />
+                  )}
+                />
+              </RequireAuth>
+            )}
+          />
+
+          <Route
+            path="/admin"
+            element={(
+              <RequireAdmin isAuthenticated={isAuthenticated} isAdmin={isAdmin}>
+                <AdminPage
+                  header={adminHeader}
+                  summaries={adminSummaries}
+                  content={(
+                    <AdminPanel
+                      language={language}
+                      stores={stores}
+                      users={adminUsers}
+                      requests={adminRequests}
+                      insights={adminInsights}
+                      usersLoading={adminUsersLoading}
+                      requestsLoading={adminRequestsLoading}
+                      userDeletingId={adminUserDeletingId}
+                      requestDeletingId={adminRequestDeletingId}
+                      form={adminForm}
+                      saving={adminSaving}
+                      deletingId={adminDeletingId}
+                      editingStoreId={editingStoreId}
+                      importingPdf={adminImportingPdf}
+                      onChange={handleAdminInputChange}
+                      onImportPdf={handleImportPdf}
+                      onSubmit={handleAdminSubmit}
+                      onEdit={handleEditStore}
+                      onDelete={handleDeleteStore}
+                      onCancelEdit={handleCancelAdminEdit}
+                      onDeleteUser={handleDeleteAdminUser}
+                      onDeleteRequest={handleDeleteAdminRequest}
+                    />
+                  )}
+                />
+              </RequireAdmin>
+            )}
+          />
+
+          <Route
+            path="/profile"
+            element={(
+              <ProfilePage
+                header={loginRedirectNotice ? (
+                  <section className="login-gate-panel">
+                    <div className="banner banner--info banner--animated">
+                      <strong>{uiText.loginRequiredPrompt}</strong>
+                      <p>{uiText.loginRequiredCopy}</p>
+                    </div>
+                  </section>
+                ) : null}
+                content={(
+                  <div ref={profilePageRef}>
+                    <ProfilePanel
+                      form={profileForm}
+                      user={user}
+                      isAdmin={isAdmin}
+                      loading={profileLoading}
+                      error={profileError}
+                      notice={profileNotice}
+                      language={language}
+                      onChange={handleProfileInputChange}
+                      onSubmit={handleProfileSubmit}
+                      onReset={handleProfileReset}
+                    />
                   </div>
-                </div>
-              </div>
+                )}
+                alerts={isAuthenticated ? (
+                  <div ref={notificationPageRef}>
+                    <NotificationSettingsPanel
+                      user={user}
+                      settings={preferenceForm}
+                      saving={preferenceSaving}
+                      feedback={notificationFeedback}
+                      language={language}
+                      onChange={handlePreferenceChange}
+                      onSubmit={handlePreferenceSubmit}
+                    />
+                  </div>
+                ) : null}
+              />
             )}
-          </div>
-
-          <form className="chat-composer" onSubmit={handleSubmit}>
-            <button
-              type="button"
-              className={`chat-composer__voice ${listening ? "chat-composer__voice--active" : ""}`}
-              onClick={handleVoiceInput}
-              aria-label={listening ? uiText.stopListening : uiText.listen}
-              disabled={!isAuthenticated}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M12 4a3 3 0 0 1 3 3v5a3 3 0 1 1-6 0V7a3 3 0 0 1 3-3Zm-6 8a1 1 0 1 1 2 0 4 4 0 1 0 8 0 1 1 0 1 1 2 0 6 6 0 0 1-5 5.91V21h2a1 1 0 1 1 0 2H9a1 1 0 0 1 0-2h2v-2.09A6 6 0 0 1 6 12Z"
-                  fill="currentColor"
-                />
-              </svg>
-            </button>
-
-            <input
-              type="text"
-              placeholder={uiText.typePlaceholder}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              disabled={!isAuthenticated}
-            />
-            <button type="submit" className="chat-composer__send" disabled={chatLoading || !isAuthenticated} aria-label={uiText.sendMessage}>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M5 12h11M12 5l7 7-7 7"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-              </svg>
-            </button>
-          </form>
-
-          {voiceSupported && listening && (
-            <p className="chat-panel__listening">{uiText.listening}</p>
-          )}
-
-          {!isAuthenticated && (
-            <p className="chat-panel__listening">{uiText.loginRequiredPrompt}</p>
-          )}
-        </div>
-
-        <div ref={storesSectionRef} id="stores-section" className="store-panel">
-          <div className="store-panel__header">
-            <div>
-              <p className="store-panel__eyebrow">{uiText.availabilityBoard}</p>
-              <h2>{activeLocation ? uiText.storesNear(activeLocation) : uiText.allStores}</h2>
-              <p className="store-panel__summary">
-                {dashboardLoading ? uiText.loadingBranches : uiText.branchSummary(stores.length, stateCount, cityCount)}
-              </p>
-            </div>
-          </div>
-
-          <div className="store-panel__content">
-            {dashboardLoading ? (
-              Array.from({ length: 3 }).map((_, index) => (
-                <article key={`store-skeleton-${index}`} className="store-card store-card--skeleton">
-                  <div className="skeleton skeleton--title" />
-                  <div className="skeleton skeleton--text" />
-                  <div className="skeleton skeleton--grid" />
-                </article>
-              ))
-            ) : stores.length ? (
-              stores.map((store) => (
-                <StoreCard
-                  key={store.id}
-                  store={store}
-                  recommended={recommendedStore?.id === store.id}
-                  language={language}
-                  storeRef={(element) => registerStoreCardRef(store.id, element)}
-                  highlighted={highlightedStoreId === store.id}
-                  onRequest={handleRequestStore}
-                  requestStatus={bookingStatusByStoreId[store.id] || null}
-                  requestLoading={bookingPendingStoreId === store.id}
-                  onNotify={handleNotifyWhenAvailable}
-                  notifyLoading={notifyPendingStoreId === store.id}
-                  notifyStatus={requestStatusByStoreId[store.id] || null}
-                />
-              ))
-            ) : (
-              <p className="store-panel__empty">{uiText.noStoreMatch}</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {isAuthenticated && (
-        <div ref={requestsSectionRef} id="requests-section">
-          <RequestHistoryPanel
-            user={user}
-            loading={requestHistoryLoading}
-            deletingId={requestDeletingId}
-            requests={requestHistory}
-            feedback={requestFeedback}
-            language={language}
-            onRemove={handleRemoveRequest}
           />
-        </div>
-      )}
-        </>
+
+          <Route path="*" element={<Navigate to={isAuthenticated ? "/" : "/profile"} replace />} />
+        </Routes>
+      </div>
+
+      {location.pathname !== "/chat" && (
+        <FloatingChatbot
+          uiText={uiText}
+          isOpen={floatingChatOpen}
+          onToggle={() => setFloatingChatOpen((currentState) => !currentState)}
+          onClose={() => setFloatingChatOpen(false)}
+        >
+          <ChatWorkspace
+            uiText={uiText}
+            language={language}
+            messages={messages}
+            chatLoading={chatLoading}
+            chatWindowRef={chatWindowRef}
+            isAuthenticated={isAuthenticated}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSubmit={handleSubmit}
+            onSelectQuickAction={submitMessage}
+            onVoiceInput={handleVoiceInput}
+            voiceSupported={voiceSupported}
+            listening={listening}
+            onOpenSection={handleOpenSection}
+            onOpenStore={handleOpenStoreFromResponse}
+            onRequestStore={handleRequestStore}
+            bookingStatusByStoreId={bookingStatusByStoreId}
+            bookingPendingStoreId={bookingPendingStoreId}
+            onNotifyStore={handleNotifyWhenAvailable}
+            notifyPendingStoreId={notifyPendingStoreId}
+            requestStatusByStoreId={requestStatusByStoreId}
+            compact
+            onExpand={() => {
+              setFloatingChatOpen(false);
+              navigate("/chat");
+            }}
+            onClose={() => setFloatingChatOpen(false)}
+          />
+        </FloatingChatbot>
       )}
     </main>
   );
 }
 
 export default App;
-

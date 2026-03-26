@@ -5,6 +5,7 @@ import StoreCard from "./StoreCard";
 function ChatMessage({
   message,
   language = "en",
+  onOpenSection,
   onRequestStore,
   bookingStatusByStoreId = {},
   requestPendingId = null,
@@ -26,6 +27,16 @@ function ChatMessage({
       <div className="chat-message__bubble">
         <p className="chat-message__meta">{label}</p>
         <p className="chat-message__text">{message.text}</p>
+
+        {message.sectionTarget && (
+          <button
+            type="button"
+            className="chat-message__section-link"
+            onClick={() => onOpenSection?.(message.sectionTarget)}
+          >
+            {message.sectionLabel || "Open section"}
+          </button>
+        )}
 
         {!!recommendation && (
           <div className="chat-message__recommendation">

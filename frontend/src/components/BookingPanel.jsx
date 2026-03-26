@@ -8,7 +8,7 @@ function BookingPanel({ language = "en", bookings = [], loading = false, user = 
       <div className="booking-panel__header">
         <div>
           <p className="analytics-panel__eyebrow">Bookings</p>
-          <h2>{text.requestHistoryTitle}</h2>
+          <h2>{text.nav?.bookings || "Bookings"}</h2>
           <p className="booking-panel__copy">{text.requestHistoryCopy}</p>
         </div>
       </div>
@@ -42,7 +42,7 @@ function BookingPanel({ language = "en", bookings = [], loading = false, user = 
 
               <div className="booking-card__meta">
                 <span>Rs. {booking.price}</span>
-                <span>{booking.quantity} {language === "hi" ? "सिलेंडर" : "cylinder(s)"}</span>
+                <span>{booking.quantity} {text.cylinders || "cylinder(s)"}</span>
                 <span>{new Date(booking.requestedAt).toLocaleString("en-IN")}</span>
               </div>
             </article>
