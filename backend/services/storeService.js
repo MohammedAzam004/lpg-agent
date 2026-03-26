@@ -38,43 +38,6 @@ function toNumber(value, fallbackValue = Number.POSITIVE_INFINITY) {
   return Number.isFinite(parsed) ? parsed : fallbackValue;
 }
 
-function getComparableDistance(store = {}) {
-  return toNumber(store.distanceFromUser ?? store.distance, Number.POSITIVE_INFINITY);
-}
-
-function toRadians(value) {
-  return (Number(value) * Math.PI) / 180;
-}
-
-function calculateGeoDistanceKm(firstLatitude, firstLongitude, secondLatitude, secondLongitude) {
-  const earthRadiusKm = 6371;
-  const latitudeDelta = toRadians(secondLatitude - firstLatitude);
-  const longitudeDelta = toRadians(secondLongitude - firstLongitude);
-  const a = Math.sin(latitudeDelta / 2) ** 2
-    + Math.cos(toRadians(firstLatitude))
-    * Math.cos(toRadians(secondLatitude))
-    * Math.sin(longitudeDelta / 2) ** 2;
-
-  return earthRadiusKm * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-
-function attachGeoDistances(stores, latitude, longitude) {
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return stores;
-  }
-
-  return stores.map((store) => {
-    if (!Number.isFinite(Number(store.latitude)) || !Number.isFinite(Number(store.longitude))) {
-      return store;
-    }
-
-    return {
-      ...store,
-      distanceFromUser: Number(calculateGeoDistanceKm(latitude, longitude, Number(store.latitude), Number(store.longitude)).toFixed(2))
-    };
-  });
-}
-
 function normalizeString(value, fallbackValue = "") {
   if (value === undefined || value === null) {
     return fallbackValue;
@@ -142,7 +105,7 @@ function sortByDistanceThenPrice(stores) {
 }
 
 function scoreStore(store, limits) {
-  const distanceScore = limits.maxDistance === 0 ? 1 : 1 - getComparableDistance(store) / limits.maxDistance;
+  const distanceScore = limits.maxDistance === 0 ? 1 : 1 - toNumber(store.distance, limits.maxDistance) / limits.maxDistance;
   const priceScore = limits.maxPrice === 0 ? 1 : 1 - toNumber(store.price, limits.maxPrice) / limits.maxPrice;
 
   return distanceScore * 0.6 + priceScore * 0.4;
@@ -327,7 +290,7 @@ function sortStores(stores, sortBy = "distance") {
   }
 
   return [...stores].sort((leftStore, rightStore) => {
-    const distanceDelta = getComparableDistance(leftStore) - getComparableDistance(rightStore);
+    const distanceDelta = toNumber(leftStore.distance) - toNumber(rightStore.distance);
 
     if (distanceDelta !== 0) {
       return distanceDelta;
@@ -346,7 +309,7 @@ function pickBestRecommendation(stores) {
 
   const limits = availableStores.reduce(
     (accumulator, store) => ({
-      maxDistance: Math.max(accumulator.maxDistance, getComparableDistance(store)),
+      maxDistance: Math.max(accumulator.maxDistance, toNumber(store.distance, 0)),
       maxPrice: Math.max(accumulator.maxPrice, toNumber(store.price, 0))
     }),
     { maxDistance: 0, maxPrice: 0 }
@@ -369,9 +332,9 @@ function buildRecommendationExplanation(recommendation, stores = []) {
   }
 
   const lowestPrice = Math.min(...comparableStores.map((store) => Number(store.price)));
-  const lowestDistance = Math.min(...comparableStores.map((store) => getComparableDistance(store)));
+  const lowestDistance = Math.min(...comparableStores.map((store) => Number(store.distance)));
   const isCheapest = Number(recommendation.price) === lowestPrice;
-  const isClosest = getComparableDistance(recommendation) === lowestDistance;
+  const isClosest = Number(recommendation.distance) === lowestDistance;
 
   if (isClosest && isCheapest) {
     return "This store is recommended because it is closest and cheapest.";
@@ -537,17 +500,7 @@ function validateStoreEntity(payload = {}, existingStore = null) {
 
 async function searchStores(filters = {}) {
   const [stores, previousStores] = await Promise.all([getStores(), getPreviousStores()]);
-  const withGeoDistances = attachGeoDistances(
-    stores,
-    Number.isFinite(Number(filters.latitude)) ? Number(filters.latitude) : Number.NaN,
-    Number.isFinite(Number(filters.longitude)) ? Number(filters.longitude) : Number.NaN
-  );
-  let filteredStores = filterStores(withGeoDistances, filters);
-
-  if (Number.isFinite(Number(filters.latitude)) && Number.isFinite(Number(filters.longitude)) && filters.maxDistance != null) {
-    filteredStores = filteredStores.filter((store) => getComparableDistance(store) <= Number(filters.maxDistance));
-  }
-
+  const filteredStores = filterStores(stores, filters);
   const sortedStores = sortStores(filteredStores, filters.sortBy || "distance");
   const availabilityLabel = typeof filters.availability === "boolean"
     ? (filters.availability ? "available" : "not_available")
@@ -555,7 +508,7 @@ async function searchStores(filters = {}) {
       ? "available"
       : "any";
   console.log(
-    `[store-service] searchStores filter applied: location="${filters.locationQuery || "all"}" state="${filters.state || "any"}" city="${filters.city || "any"}" availability="${availabilityLabel}" sortBy="${filters.sortBy || "distance"}" latitude="${filters.latitude || "none"}" longitude="${filters.longitude || "none"}" results=${sortedStores.length}`
+    `[store-service] searchStores filter applied: location="${filters.locationQuery || "all"}" state="${filters.state || "any"}" city="${filters.city || "any"}" availability="${availabilityLabel}" sortBy="${filters.sortBy || "distance"}" results=${sortedStores.length}`
   );
   return attachPredictions(sortedStores, previousStores);
 }
@@ -583,23 +536,19 @@ async function getAllStores() {
   return attachPredictions(sortStores(stores, "distance"), previousStores);
 }
 
-async function getNearbyStores(location, maxDistance, latitude = null, longitude = null) {
+async function getNearbyStores(location, maxDistance) {
   return searchStores({
     locationQuery: location,
     maxDistance: maxDistance ? Number(maxDistance) : null,
-    latitude,
-    longitude,
     sortBy: "distance"
   });
 }
 
-async function getAvailableStores(location, latitude = null, longitude = null) {
+async function getAvailableStores(location) {
   return searchStores({
     locationQuery: location,
     availability: true,
     availableOnly: true,
-    latitude,
-    longitude,
     sortBy: "distance"
   });
 }
@@ -612,15 +561,15 @@ async function getUnavailableStores(location) {
   });
 }
 
-async function getBestRecommendation(location, latitude = null, longitude = null) {
-  const availableStores = await getAvailableStores(location, latitude, longitude);
+async function getBestRecommendation(location) {
+  const availableStores = await getAvailableStores(location);
   return pickBestRecommendation(availableStores);
 }
 
-async function getTrendAnalytics(locationQuery = null, latitude = null, longitude = null) {
+async function getTrendAnalytics(locationQuery = null) {
   const [currentStores, previousStores] = await Promise.all([getStores(), getPreviousStores()]);
-  const currentVisibleStores = filterStores(attachGeoDistances(currentStores, latitude, longitude), { locationQuery });
-  const previousVisibleStores = filterStores(attachGeoDistances(previousStores, latitude, longitude), { locationQuery });
+  const currentVisibleStores = filterStores(currentStores, { locationQuery });
+  const previousVisibleStores = filterStores(previousStores, { locationQuery });
   const previousSeries = buildTrendSeries(previousVisibleStores);
   const currentSeries = buildTrendSeries(currentVisibleStores);
 

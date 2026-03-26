@@ -4,9 +4,6 @@
 } = require("./storeService");
 const { getConversationMemory, saveConversationTurn } = require("./chatMemoryService");
 const { extractQueryUnderstanding } = require("./geminiService");
-const { getRequestHistory } = require("./requestService");
-const { getBookingHistory } = require("./bookingService");
-const { getUserProfile } = require("./userService");
 const { runChatAgents } = require("./agents/orchestrator");
 
 const COPY = {
@@ -240,8 +237,6 @@ function buildChatResponse({
   recommendation = null,
   alternatives = [],
   explanation = null,
-  sectionTarget = null,
-  sectionLabel = null,
   language = "en"
 }) {
   return {
@@ -255,9 +250,7 @@ function buildChatResponse({
     count: stores.length,
     stores,
     recommendation,
-    alternatives,
-    sectionTarget,
-    sectionLabel
+    alternatives
   };
 }
 
@@ -748,180 +741,6 @@ function buildHelpResponse(message, location, language) {
   });
 }
 
-function detectSectionTarget(message = "") {
-  const normalizedMessage = normalizeMessageText(message);
-
-  if (/\b(notification|notifications|notify|alert|alerts|preference|preferences|settings)\b/i.test(normalizedMessage)) {
-    return "alerts";
-  }
-
-  if (/\b(my requests|request history|requests|requested stores)\b/i.test(normalizedMessage)) {
-    return "requests";
-  }
-
-  if (/\b(bookings|booking history|my bookings)\b/i.test(normalizedMessage)) {
-    return "requests";
-  }
-
-  if (/\b(profile|login|register|account)\b/i.test(normalizedMessage)) {
-    return "profile";
-  }
-
-  if (/\b(store board|availability board|all stores|stores|branches|network)\b/i.test(normalizedMessage)) {
-    return "stores";
-  }
-
-  if (/\b(dashboard|analytics|summary|overview|home)\b/i.test(normalizedMessage)) {
-    return "home";
-  }
-
-  if (/\b(admin|admin panel|admin portal|users panel|request panel)\b/i.test(normalizedMessage)) {
-    return "admin";
-  }
-
-  if (/\b(chat|assistant)\b/i.test(normalizedMessage)) {
-    return "chat";
-  }
-
-  return null;
-}
-
-async function buildSectionResponse(message, language, identity = {}) {
-  const sectionTarget = detectSectionTarget(message);
-
-  if (!sectionTarget) {
-    return null;
-  }
-
-  const normalizedLanguage = normalizeLanguage(language);
-  const userEmail = identity?.userEmail || null;
-
-  if (sectionTarget === "alerts") {
-    let reply = "Opening notification settings.";
-
-    if (userEmail) {
-      try {
-        const user = await getUserProfile(userEmail);
-        if (user) {
-          const parts = [];
-
-          if (user.maxPrice != null) {
-            parts.push(`price up to Rs. ${user.maxPrice}`);
-          }
-
-          if (user.maxDistance != null) {
-            parts.push(`distance within ${user.maxDistance} km`);
-          }
-
-          reply = parts.length
-            ? `Opening notification settings. Your current filters are ${parts.join(" and ")}.`
-            : "Opening notification settings. All LPG stock alerts are currently enabled for your account.";
-        }
-      } catch (error) {
-        console.warn("[chat] Could not load notification settings for section response:", error.message);
-      }
-    }
-
-    return buildChatResponse({
-      intent: "section",
-      query: message,
-      location: null,
-      reply,
-      sectionTarget,
-      sectionLabel: "Notification Settings",
-      language: normalizedLanguage
-    });
-  }
-
-  if (sectionTarget === "requests") {
-    let reply = "Opening your requests section.";
-
-    if (userEmail) {
-      const [requestsResult, bookingsResult] = await Promise.allSettled([
-        getRequestHistory(userEmail),
-        getBookingHistory(userEmail)
-      ]);
-      const requestCount = requestsResult.status === "fulfilled" ? requestsResult.value.length : 0;
-      const bookingCount = bookingsResult.status === "fulfilled" ? bookingsResult.value.length : 0;
-      reply = `Opening your requests section. You currently have ${requestCount} notify request${requestCount === 1 ? "" : "s"} and ${bookingCount} LPG booking${bookingCount === 1 ? "" : "s"}.`;
-    }
-
-    return buildChatResponse({
-      intent: "section",
-      query: message,
-      location: null,
-      reply,
-      sectionTarget,
-      sectionLabel: "My Requests",
-      language: normalizedLanguage
-    });
-  }
-
-  if (sectionTarget === "profile") {
-    return buildChatResponse({
-      intent: "section",
-      query: message,
-      location: null,
-      reply: "Opening your profile section.",
-      sectionTarget,
-      sectionLabel: "Profile",
-      language: normalizedLanguage
-    });
-  }
-
-  if (sectionTarget === "stores") {
-    return buildChatResponse({
-      intent: "section",
-      query: message,
-      location: null,
-      reply: "Opening the tracked LPG stores section.",
-      sectionTarget,
-      sectionLabel: "Stores",
-      language: normalizedLanguage
-    });
-  }
-
-  if (sectionTarget === "chat") {
-    return buildChatResponse({
-      intent: "section",
-      query: message,
-      location: null,
-      reply: "Opening the chat assistant section.",
-      sectionTarget,
-      sectionLabel: "Chat",
-      language: normalizedLanguage
-    });
-  }
-
-  if (sectionTarget === "admin") {
-    const user = userEmail ? await getUserProfile(userEmail).catch(() => null) : null;
-    const isAdminUser = Boolean(user?.isAdmin || user?.role === "admin");
-
-    return buildChatResponse({
-      success: isAdminUser,
-      intent: "section",
-      query: message,
-      location: null,
-      reply: isAdminUser
-        ? "Opening the admin portal."
-        : "Admin panel is available only for admin users.",
-      sectionTarget: isAdminUser ? "admin" : null,
-      sectionLabel: isAdminUser ? "Admin Portal" : null,
-      language: normalizedLanguage
-    });
-  }
-
-  return buildChatResponse({
-    intent: "section",
-    query: message,
-    location: null,
-    reply: "Opening the dashboard overview.",
-    sectionTarget: "home",
-    sectionLabel: "Home",
-    language: normalizedLanguage
-  });
-}
-
 function buildMemoryPayload(response, extractedQuery = {}, locationHint, language) {
   const state = response?.location?.state || extractedQuery.state || extractedQuery.location?.state;
   const city = response?.location?.city || extractedQuery.city || extractedQuery.location?.city;
@@ -1132,16 +951,6 @@ async function processChatMessage(message, location, language = "en", identity =
       language: resolvedLanguage
     });
     return smallTalkResponse;
-  }
-
-  const sectionResponse = await buildSectionResponse(message, resolvedLanguage, identity);
-
-  if (sectionResponse) {
-    await persistChatMemory(identity, message, sectionResponse, {
-      lastIntent: sectionResponse.intent,
-      language: resolvedLanguage
-    });
-    return sectionResponse;
   }
 
   if (category !== "lpg") {

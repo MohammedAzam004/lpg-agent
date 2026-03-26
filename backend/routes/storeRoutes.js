@@ -11,7 +11,6 @@ const {
   recommendStore,
   updateStoreEntry
 } = require("../controllers/storeController");
-const { verifyFirebaseToken } = require("../middleware/verifyFirebaseToken");
 const { requireAdminAccess } = require("../utils/accessControl");
 
 const router = express.Router();
@@ -37,9 +36,9 @@ router.get("/analytics", getStoreAnalytics);
 router.get("/nearby", listNearbyStores);
 router.get("/available", listAvailableStores);
 router.get("/recommend", recommendStore);
-router.post("/import/pdf", verifyFirebaseToken, requireAdminAccess, upload.single("file"), importStorePdfEntry);
-router.post("/", verifyFirebaseToken, requireAdminAccess, createStoreEntry);
-router.put("/:id", verifyFirebaseToken, requireAdminAccess, updateStoreEntry);
-router.delete("/:id", verifyFirebaseToken, requireAdminAccess, deleteStoreEntry);
+router.post("/import/pdf", requireAdminAccess, upload.single("file"), importStorePdfEntry);
+router.post("/", requireAdminAccess, createStoreEntry);
+router.put("/:id", requireAdminAccess, updateStoreEntry);
+router.delete("/:id", requireAdminAccess, deleteStoreEntry);
 
 module.exports = router;

@@ -25,27 +25,17 @@ import {
   fetchAdminUsers,
   fetchAvailableStores,
   fetchBookingHistory,
-  fetchAuthSession,
   fetchRequestHistory,
   fetchRecommendedStore,
   fetchStoreAnalytics,
   fetchStores,
+  fetchUserProfile,
   importStoresFromPdf,
-  sendOtpCode,
+  registerOrLoginUser,
   sendChatMessage,
-  syncAuthenticatedUser,
   updateStoreRecord,
-  updateUserProfile,
-  verifyOtpCode
+  updateUserProfile
 } from "./services/api";
-import {
-  getFirebaseIdToken,
-  loginWithEmailPassword,
-  loginWithGoogle,
-  logoutFirebaseUser,
-  onFirebaseAuthChange,
-  registerWithEmailPassword
-} from "./services/firebaseService";
 import AdminPage from "./pages/AdminPage";
 import BookingsPage from "./pages/BookingsPage";
 import ChatPage from "./pages/ChatPage";
@@ -54,6 +44,7 @@ import ProfilePage from "./pages/ProfilePage";
 import RequestsPage from "./pages/RequestsPage";
 
 const USER_EMAIL_STORAGE_KEY = "lpg-smart-user-email";
+const USER_PROFILE_STORAGE_KEY = "lpg-smart-user-profile";
 const LANGUAGE_STORAGE_KEY = "lpg-smart-language";
 const CHAT_SESSION_STORAGE_KEY = "lpg-smart-chat-session";
 const CHAT_MESSAGES_STORAGE_KEY = "lpg-smart-chat-messages";
@@ -62,8 +53,7 @@ const initialProfileForm = {
   name: "",
   email: "",
   phone: "",
-  address: "",
-  password: ""
+  address: ""
 };
 
 const initialPreferenceForm = {
@@ -194,18 +184,6 @@ function buildAdminForm(store = null) {
   };
 }
 
-function buildLocationContext(locationQuery, user = null) {
-  return {
-    locationQuery: locationQuery || "",
-    latitude: user?.latitude ?? null,
-    longitude: user?.longitude ?? null
-  };
-}
-
-function getPreferredDisplayName(user = {}, fallbackForm = {}) {
-  return user?.name || user?.displayName || fallbackForm?.name || "there";
-}
-
 function createInitialMessage(language) {
   const initialMessageByLanguage = {
     en: "Ask about nearby LPG, cheapest cylinders, current availability, or the best recommendation for your area.",
@@ -281,9 +259,52 @@ function getOrCreateChatSessionId() {
   return generatedSessionId;
 }
 
+function loadStoredUser() {
+  try {
+    const rawUser = window.localStorage.getItem(USER_PROFILE_STORAGE_KEY);
+
+    if (!rawUser) {
+      return null;
+    }
+
+    const parsedUser = JSON.parse(rawUser);
+    return parsedUser && typeof parsedUser === "object" && parsedUser.email ? parsedUser : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistStoredUser(user) {
+  if (!user?.email) {
+    return;
+  }
+
+  window.localStorage.setItem(USER_EMAIL_STORAGE_KEY, user.email);
+  window.localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(user));
+}
+
+function clearStoredUser() {
+  window.localStorage.removeItem(USER_EMAIL_STORAGE_KEY);
+  window.localStorage.removeItem(USER_PROFILE_STORAGE_KEY);
+}
+
+function buildProfileForm(user = null) {
+  if (!user) {
+    return initialProfileForm;
+  }
+
+  return {
+    name: user.name || "",
+    email: user.email || "",
+    phone: user.phone || "",
+    address: user.address || ""
+  };
+}
+
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const storedUser = useMemo(() => loadStoredUser(), []);
   const [chatSessionId] = useState(() => getOrCreateChatSessionId());
   const [language, setLanguage] = useState(() => window.localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en");
   const uiText = useMemo(() => getUiText(language), [language]);
@@ -298,18 +319,10 @@ function App() {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [error, setError] = useState("");
-  const [profileForm, setProfileForm] = useState(initialProfileForm);
-  const [preferenceForm, setPreferenceForm] = useState(initialPreferenceForm);
-  const [user, setUser] = useState(null);
-  const [authToken, setAuthToken] = useState("");
-  const [authMode, setAuthMode] = useState("login");
-  const [otpRequired, setOtpRequired] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpVerifying, setOtpVerifying] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
+  const [profileForm, setProfileForm] = useState(() => buildProfileForm(storedUser));
+  const [preferenceForm, setPreferenceForm] = useState(() => buildPreferenceForm(storedUser));
+  const [user, setUser] = useState(storedUser);
   const [authInitializing, setAuthInitializing] = useState(true);
-  const [locationStatus, setLocationStatus] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
   const [preferenceSaving, setPreferenceSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -456,58 +469,67 @@ function App() {
   }, [language, uiText.voiceUnsupported]);
 
   useEffect(() => {
-    let active = true;
-    let unsubscribe = () => {};
+    let ignore = false;
 
-    try {
-      unsubscribe = onFirebaseAuthChange(async (firebaseUser) => {
-        if (!active) {
-          return;
+    async function restoreUserProfile() {
+      const savedEmail = window.localStorage.getItem(USER_EMAIL_STORAGE_KEY);
+      const cachedUser = loadStoredUser();
+
+      if (!savedEmail) {
+        if (!ignore) {
+          setAuthInitializing(false);
         }
+        return;
+      }
 
-        if (!firebaseUser) {
-          setAuthToken("");
+      if (!ignore && cachedUser?.email) {
+        setUser(cachedUser);
+        setProfileForm(buildProfileForm(cachedUser));
+        setPreferenceForm(buildPreferenceForm(cachedUser));
+      }
+
+      setProfileLoading(true);
+
+      try {
+        const savedUser = await fetchUserProfile(savedEmail);
+
+        if (!ignore && savedUser) {
+          setProfileError("");
+          setUser(savedUser);
+          setProfileForm(buildProfileForm(savedUser));
+          setPreferenceForm(buildPreferenceForm(savedUser));
+          setLanguage(savedUser.preferredLanguage || language);
+          persistStoredUser(savedUser);
+          setProfileNotice(
+            getUiText(savedUser.preferredLanguage || language).messages.welcomeBack(savedUser.name)
+          );
+        } else if (!ignore) {
+          clearStoredUser();
           setUser(null);
-          setOtpRequired(false);
-          setOtpCode("");
+          setProfileForm(initialProfileForm);
+          setPreferenceForm(initialPreferenceForm);
+        }
+      } catch (restoreError) {
+        if (!ignore) {
+          console.error("[app] Failed to restore saved profile:", restoreError.message);
+
+          if (!cachedUser?.email) {
+            clearStoredUser();
+            setProfileError("Unable to restore the saved user profile right now.");
+          }
+        }
+      } finally {
+        if (!ignore) {
           setProfileLoading(false);
           setAuthInitializing(false);
-          window.localStorage.removeItem(USER_EMAIL_STORAGE_KEY);
-          return;
         }
-
-        setProfileLoading(true);
-
-        try {
-          const nextAuthToken = await firebaseUser.getIdToken();
-
-          if (!active) {
-            return;
-          }
-
-          setAuthToken(nextAuthToken);
-          await restoreAuthenticatedSession(nextAuthToken, firebaseUser);
-        } catch (restoreError) {
-          if (!active) {
-            return;
-          }
-
-          setProfileError(restoreError.message || "Could not restore the saved user profile.");
-        } finally {
-          if (active) {
-            setProfileLoading(false);
-            setAuthInitializing(false);
-          }
-        }
-      });
-    } catch (authBootstrapError) {
-      setProfileError(authBootstrapError.message || "Firebase authentication is not configured.");
-      setAuthInitializing(false);
+      }
     }
 
+    restoreUserProfile();
+
     return () => {
-      active = false;
-      unsubscribe();
+      ignore = true;
     };
   }, []);
 
@@ -519,12 +541,11 @@ function App() {
       setError("");
 
       try {
-        const locationContext = buildLocationContext(activeLocation, user);
         const [trackedStores, liveAvailableStores, featuredStore, analytics] = await Promise.all([
-          fetchStores(locationContext),
-          fetchAvailableStores(locationContext),
-          fetchRecommendedStore(locationContext),
-          fetchStoreAnalytics(locationContext)
+          fetchStores(activeLocation),
+          fetchAvailableStores(activeLocation),
+          fetchRecommendedStore(activeLocation),
+          fetchStoreAnalytics(activeLocation)
         ]);
 
         if (!ignore) {
@@ -549,13 +570,13 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [activeLocation, uiText.messages.dashboardLoadError, user?.latitude, user?.longitude]);
+  }, [activeLocation, uiText.messages.dashboardLoadError]);
 
   useEffect(() => {
     let ignore = false;
 
     async function loadBookingHistory() {
-      if (!authToken || !user?.email) {
+      if (!user?.email) {
         setBookingHistory([]);
         return;
       }
@@ -563,7 +584,7 @@ function App() {
       setBookingLoading(true);
 
       try {
-        const bookings = await fetchBookingHistory(authToken);
+        const bookings = await fetchBookingHistory(user.email);
 
         if (!ignore) {
           setBookingHistory(bookings);
@@ -584,13 +605,13 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [authToken, user?.email, uiText.messages.bookingLoadError]);
+  }, [user?.email, uiText.messages.bookingLoadError]);
 
   useEffect(() => {
     let ignore = false;
 
     async function loadRequestHistory() {
-      if (!authToken || !user?.email) {
+      if (!user?.email) {
         setRequestHistory([]);
         return;
       }
@@ -598,7 +619,7 @@ function App() {
       setRequestHistoryLoading(true);
 
       try {
-        const requests = await fetchRequestHistory(authToken);
+        const requests = await fetchRequestHistory(user.email);
 
         if (!ignore) {
           setRequestHistory(dedupeStoreRequests(requests));
@@ -622,13 +643,13 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [authToken, user?.email]);
+  }, [user?.email]);
 
   useEffect(() => {
     let ignore = false;
 
     async function loadAdminInsights() {
-      if (!authToken || !user?.email || !isAdmin) {
+      if (!user?.email || !isAdmin) {
         if (!ignore) {
           setAdminUsers([]);
           setAdminRequests([]);
@@ -645,9 +666,9 @@ function App() {
 
       try {
         const [usersPayload, requestsPayload, insightsPayload] = await Promise.all([
-          fetchAdminUsers(authToken),
-          fetchAdminRequests(authToken),
-          fetchAdminInsights(authToken)
+          fetchAdminUsers(user.email),
+          fetchAdminRequests(user.email),
+          fetchAdminInsights(user.email)
         ]);
 
         if (!ignore) {
@@ -672,7 +693,7 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [authToken, isAdmin, user?.email]);
+  }, [isAdmin, user?.email]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -760,12 +781,11 @@ function App() {
   }
 
   async function refreshDashboard(preferredRecommendation = null) {
-    const locationContext = buildLocationContext(activeLocation, user);
     const [trackedStores, liveAvailableStores, featuredStore, analytics] = await Promise.all([
-      fetchStores(locationContext),
-      fetchAvailableStores(locationContext),
-      fetchRecommendedStore(locationContext),
-      fetchStoreAnalytics(locationContext)
+      fetchStores(activeLocation),
+      fetchAvailableStores(activeLocation),
+      fetchRecommendedStore(activeLocation),
+      fetchStoreAnalytics(activeLocation)
     ]);
 
     setStores(trackedStores);
@@ -775,7 +795,7 @@ function App() {
   }
 
   async function refreshAdminInsights(activeUser = user) {
-    if (!authToken || !activeUser?.email || !(activeUser?.isAdmin || activeUser?.role === "admin")) {
+    if (!activeUser?.email || !(activeUser?.isAdmin || activeUser?.role === "admin")) {
       setAdminUsers([]);
       setAdminRequests([]);
       setAdminInsights(null);
@@ -783,9 +803,9 @@ function App() {
     }
 
     const [usersPayload, requestsPayload, insightsPayload] = await Promise.all([
-      fetchAdminUsers(authToken),
-      fetchAdminRequests(authToken),
-      fetchAdminInsights(authToken)
+      fetchAdminUsers(activeUser.email),
+      fetchAdminRequests(activeUser.email),
+      fetchAdminInsights(activeUser.email)
     ]);
 
     setAdminUsers(usersPayload.users || []);
@@ -794,154 +814,26 @@ function App() {
   }
 
   async function refreshRequestHistory(activeEmail = user?.email) {
-    if (!activeEmail || !authToken) {
+    if (!activeEmail) {
       setRequestHistory([]);
       return;
     }
 
-    const requests = await fetchRequestHistory(authToken);
+    const requests = await fetchRequestHistory(activeEmail);
     setRequestHistory(dedupeStoreRequests(requests));
-  }
-
-  function applyAuthenticatedUserState(resolvedUser, noticeMessage = "") {
-    if (!resolvedUser) {
-      return;
-    }
-
-    setProfileError("");
-    setUser(resolvedUser);
-    setProfileForm({
-      name: resolvedUser.name || "",
-      email: resolvedUser.email || "",
-      phone: resolvedUser.phone || "",
-      address: resolvedUser.address || "",
-      password: ""
-    });
-    setPreferenceForm(buildPreferenceForm(resolvedUser));
-    setLanguage(resolvedUser.preferredLanguage || language);
-    setOtpRequired(false);
-    setOtpCode("");
-    window.localStorage.setItem(USER_EMAIL_STORAGE_KEY, resolvedUser.email);
-
-    if (noticeMessage) {
-      setProfileNotice(noticeMessage);
-    }
-  }
-
-  function applyPendingOtpState(sessionUser, noticeMessage = "") {
-    setUser(null);
-    setOtpRequired(true);
-    setOtpCode("");
-    setProfileForm((currentForm) => ({
-      ...currentForm,
-      name: sessionUser?.name || currentForm.name,
-      email: sessionUser?.email || currentForm.email,
-      phone: sessionUser?.phone || currentForm.phone,
-      address: sessionUser?.address || currentForm.address,
-      password: currentForm.password
-    }));
-    setPreferenceForm(buildPreferenceForm(sessionUser));
-
-    if (noticeMessage) {
-      setProfileNotice(noticeMessage);
-    }
-  }
-
-  async function requestAndSyncLocation(nextAuthToken, currentUser) {
-    if (!nextAuthToken || !currentUser || currentUser.latitude != null || currentUser.longitude != null) {
-      return currentUser;
-    }
-
-    if (!navigator.geolocation) {
-      setLocationStatus(uiText.profile.locationUnsupported || "Location access is not supported on this device.");
-      return currentUser;
-    }
-
-    setLocationStatus(uiText.profile.locationPending || "Requesting location permission...");
-
-    try {
-      const coordinates = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          (position) => resolve(position.coords),
-          (error) => reject(error),
-          {
-            enableHighAccuracy: false,
-            timeout: 8000,
-            maximumAge: 5 * 60 * 1000
-          }
-        );
-      });
-      const syncedSession = await syncAuthenticatedUser(nextAuthToken, {
-        preferredLanguage: currentUser.preferredLanguage || language,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude
-      });
-
-      if (syncedSession?.user) {
-        setLocationStatus(uiText.profile.locationSuccess || "Location saved for better nearby LPG recommendations.");
-        return syncedSession.user;
-      }
-    } catch (locationError) {
-      console.warn("[app] Location sync skipped:", locationError.message);
-      setLocationStatus(uiText.profile.locationSkipped || "Location permission was skipped. You can still search manually.");
-    }
-
-    return currentUser;
-  }
-
-  async function restoreAuthenticatedSession(nextAuthToken, firebaseUser) {
-    const existingSession = await fetchAuthSession(nextAuthToken);
-    const hydratedSession = existingSession?.user
-      ? existingSession
-      : await syncAuthenticatedUser(nextAuthToken, {
-        name: firebaseUser.displayName || profileForm.name,
-        phone: profileForm.phone,
-        address: profileForm.address,
-        preferredLanguage: language
-      });
-
-    if (hydratedSession?.requiresOtp && !hydratedSession?.otpVerified) {
-      applyPendingOtpState(hydratedSession.user || {
-        name: firebaseUser.displayName || profileForm.name,
-        email: firebaseUser.email || profileForm.email,
-        phone: profileForm.phone,
-        address: profileForm.address
-      }, uiText.profile.otpNotice || "Enter the OTP sent to your email to continue.");
-      return null;
-    }
-
-    if (!hydratedSession?.user) {
-      return null;
-    }
-
-    const syncedUserWithLocation = await requestAndSyncLocation(nextAuthToken, hydratedSession.user);
-    applyAuthenticatedUserState(syncedUserWithLocation);
-    await refreshAdminInsights(syncedUserWithLocation);
-    return syncedUserWithLocation;
   }
 
   async function handleProfileSubmit(event) {
     event.preventDefault();
     setProfileError("");
     setProfileNotice("");
-    setLocationStatus("");
 
     if (!isValidEmailFormat(profileForm.email)) {
       setProfileError(uiText.messages.invalidEmail);
       return;
     }
 
-    if (!profileForm.password || profileForm.password.length < 6) {
-      setProfileError(uiText.profile.passwordValidation || "Password must be at least 6 characters.");
-      return;
-    }
-
-    if (authMode === "register" && !profileForm.name.trim()) {
-      setProfileError(uiText.profile.fullNamePlaceholder || "Name is required for registration.");
-      return;
-    }
-
-    if (authMode === "register" && profileForm.phone && !isValidPhoneFormat(profileForm.phone)) {
+    if (profileForm.phone && !isValidPhoneFormat(profileForm.phone)) {
       setProfileError(uiText.messages.invalidPhone);
       return;
     }
@@ -949,46 +841,28 @@ function App() {
     setProfileLoading(true);
 
     try {
-      const firebaseUser = authMode === "register"
-        ? await registerWithEmailPassword({
-          email: profileForm.email.trim(),
-          password: profileForm.password,
-          displayName: profileForm.name.trim()
-        })
-        : await loginWithEmailPassword({
-          email: profileForm.email.trim(),
-          password: profileForm.password
-        });
-      const nextAuthToken = await getFirebaseIdToken(true);
-
-      if (!nextAuthToken) {
-        throw new Error(uiText.profile.sessionError || "Unable to create a secure session.");
-      }
-
-      setAuthToken(nextAuthToken);
-      const session = await syncAuthenticatedUser(nextAuthToken, {
+      const response = await registerOrLoginUser({
         ...profileForm,
-        preferredLanguage: language,
-        sendProfileEmails: true,
-        authFlow: authMode
+        preferredLanguage: language
       });
+      const resolvedUser = response?.user || null;
 
-      if (session?.requiresOtp && !session?.otpVerified) {
-        applyPendingOtpState(session.user, uiText.profile.otpNotice || "Enter the OTP sent to your email to continue.");
-        await sendOtpCode(nextAuthToken);
-        setProfileNotice(uiText.profile.otpSent || "OTP sent to your email.");
-        navigate("/profile", { replace: true });
-        return;
-      } else if (session?.user) {
-        const userWithLocation = await requestAndSyncLocation(nextAuthToken, session.user);
-        applyAuthenticatedUserState(
-          userWithLocation,
-          `Hello ${getPreferredDisplayName(userWithLocation, profileForm)}, welcome back 👋`
-        );
-        await refreshAdminInsights(userWithLocation);
-      } else {
+      if (!resolvedUser) {
         throw new Error(uiText.messages.noUserReturned);
       }
+
+      setProfileError("");
+      setUser(resolvedUser);
+      setProfileForm(buildProfileForm(resolvedUser));
+      setPreferenceForm(buildPreferenceForm(resolvedUser));
+      setLanguage(resolvedUser.preferredLanguage || language);
+      persistStoredUser(resolvedUser);
+      setProfileNotice(
+        response?.action === "register"
+          ? uiText.messages.welcomeCreated(resolvedUser.name)
+          : uiText.messages.welcomeBack(resolvedUser.name)
+      );
+      await refreshAdminInsights(resolvedUser);
 
       const redirectPath = typeof location.state?.from === "string" ? location.state.from : "/";
       navigate(redirectPath, { replace: true });
@@ -996,107 +870,6 @@ function App() {
       setProfileError(submitError.message || uiText.messages.profileSubmitError);
     } finally {
       setProfileLoading(false);
-    }
-  }
-
-  async function handleGoogleLogin() {
-    setProfileError("");
-    setProfileNotice("");
-    setLocationStatus("");
-    setGoogleLoading(true);
-
-    try {
-      const firebaseUser = await loginWithGoogle();
-      const nextAuthToken = await getFirebaseIdToken(true);
-
-      if (!nextAuthToken) {
-        throw new Error(uiText.profile.sessionError || "Unable to create a secure session.");
-      }
-
-      setAuthToken(nextAuthToken);
-      const session = await syncAuthenticatedUser(nextAuthToken, {
-        name: firebaseUser.displayName || profileForm.name,
-        phone: profileForm.phone,
-        address: profileForm.address,
-        preferredLanguage: language,
-        sendProfileEmails: true,
-        authFlow: "google"
-      });
-
-      if (!session?.user) {
-        throw new Error(uiText.messages.noUserReturned);
-      }
-
-      const userWithLocation = await requestAndSyncLocation(nextAuthToken, session.user);
-      applyAuthenticatedUserState(
-        userWithLocation,
-        `Hello ${getPreferredDisplayName(userWithLocation, profileForm)}, welcome back 👋`
-      );
-      await refreshAdminInsights(userWithLocation);
-
-      const redirectPath = typeof location.state?.from === "string" ? location.state.from : "/";
-      navigate(redirectPath, { replace: true });
-    } catch (googleError) {
-      setProfileError(googleError.message || uiText.profile.googleError || "Google sign-in failed.");
-    } finally {
-      setGoogleLoading(false);
-    }
-  }
-
-  async function handleSendOtp() {
-    if (!authToken || otpSending) {
-      return;
-    }
-
-    setOtpSending(true);
-    setProfileError("");
-
-    try {
-      await sendOtpCode(authToken);
-      setProfileNotice(uiText.profile.otpSent || "OTP sent to your email.");
-    } catch (otpError) {
-      setProfileError(otpError.message || uiText.profile.otpError || "Unable to send OTP right now.");
-    } finally {
-      setOtpSending(false);
-    }
-  }
-
-  async function handleVerifyOtp() {
-    if (!authToken || otpVerifying) {
-      return;
-    }
-
-    if (!/^\d{6}$/.test(String(otpCode).trim())) {
-      setProfileError(uiText.profile.invalidOtp || "Please enter a valid 6-digit OTP.");
-      return;
-    }
-
-    setOtpVerifying(true);
-    setProfileError("");
-
-    try {
-      const verification = await verifyOtpCode(authToken, {
-        otp: String(otpCode).trim(),
-        preferredLanguage: language
-      });
-
-      if (!verification?.user) {
-        throw new Error(uiText.messages.noUserReturned);
-      }
-
-      const userWithLocation = await requestAndSyncLocation(authToken, verification.user);
-      applyAuthenticatedUserState(
-        userWithLocation,
-        `Hello ${getPreferredDisplayName(userWithLocation, profileForm)}, welcome back 👋`
-      );
-      await refreshAdminInsights(userWithLocation);
-
-      const redirectPath = typeof location.state?.from === "string" ? location.state.from : "/";
-      navigate(redirectPath, { replace: true });
-    } catch (otpError) {
-      setProfileError(otpError.message || uiText.profile.otpVerifyError || "Unable to verify OTP right now.");
-    } finally {
-      setOtpVerifying(false);
     }
   }
 
@@ -1108,7 +881,7 @@ function App() {
 
     setNotificationFeedback(null);
 
-    if (!user?.email || !authToken) {
+    if (!user?.email) {
       setNotificationFeedback({
         type: "error",
         message: uiText.notification.connectionError
@@ -1141,7 +914,7 @@ function App() {
         maxDistance: preferenceForm.maxDistance,
         notificationsEnabled: preferenceForm.notificationsEnabled,
         preferredLanguage: language
-      }, authToken);
+      });
 
       if (!updatedUser) {
         throw new Error(uiText.messages.noUpdatedProfile);
@@ -1149,8 +922,10 @@ function App() {
 
       setProfileError("");
       setUser(updatedUser);
+      setProfileForm(buildProfileForm(updatedUser));
       setPreferenceForm(buildPreferenceForm(updatedUser));
       setLanguage(updatedUser.preferredLanguage || language);
+      persistStoredUser(updatedUser);
       setNotificationFeedback({
         type: "success",
         message: uiText.notification.saved
@@ -1166,20 +941,11 @@ function App() {
   }
 
   function handleProfileReset() {
-    logoutFirebaseUser().catch((logoutError) => {
-      console.warn("[app] Failed to sign out Firebase session:", logoutError.message);
-    });
-    setAuthToken("");
-    setAuthMode("login");
-    setOtpRequired(false);
-    setOtpCode("");
-    setGoogleLoading(false);
     setUser(null);
     setProfileForm(initialProfileForm);
     setPreferenceForm(initialPreferenceForm);
     setProfileError("");
     setProfileNotice("");
-    setLocationStatus("");
     setNotificationFeedback(null);
     setBookingHistory([]);
     setRequestHistory([]);
@@ -1193,7 +959,7 @@ function App() {
     setAdminNotice("");
     setMessages([createInitialMessage(language)]);
     setDraft("");
-    window.localStorage.removeItem(USER_EMAIL_STORAGE_KEY);
+    clearStoredUser();
     window.localStorage.removeItem(CHAT_MESSAGES_STORAGE_KEY);
     navigate("/profile", { replace: true });
   }
@@ -1209,7 +975,7 @@ function App() {
   }
 
   async function handleImportPdf(file) {
-    if (!isAdmin || !user?.email || !authToken || adminImportingPdf) {
+    if (!isAdmin || !user?.email || adminImportingPdf) {
       setAdminError(uiText.admin.accessDenied);
       return;
     }
@@ -1219,7 +985,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      const importResponse = await importStoresFromPdf(file, authToken);
+      const importResponse = await importStoresFromPdf(file, user.email);
       await refreshDashboard();
       await refreshRequestHistory();
       await refreshAdminInsights();
@@ -1238,7 +1004,7 @@ function App() {
   }
 
   async function handleRequestStore(store) {
-    if (!user?.email || !authToken) {
+    if (!user?.email) {
       navigate("/profile", { state: { reason: "login", from: location.pathname }, replace: true });
       return;
     }
@@ -1248,9 +1014,10 @@ function App() {
 
     try {
       const savedBooking = await createBooking({
+        userEmail: user.email,
         storeId: store.id,
         quantity: 1
-      }, authToken);
+      });
       if (savedBooking) {
         setBookingHistory((currentBookings) => [savedBooking, ...currentBookings.filter((booking) => booking.id !== savedBooking.id)]);
       }
@@ -1263,7 +1030,7 @@ function App() {
   }
 
   async function handleNotifyWhenAvailable(store) {
-    if (!user?.email || !authToken) {
+    if (!user?.email) {
       navigate("/profile", { state: { reason: "login", from: location.pathname }, replace: true });
       return;
     }
@@ -1273,8 +1040,9 @@ function App() {
 
     try {
       const savedRequest = await createRequestAlert({
+        email: user.email,
         storeId: store.id
-      }, authToken);
+      });
 
       if (!savedRequest) {
         throw new Error(uiText.messages.noRequestReturned);
@@ -1301,7 +1069,7 @@ function App() {
   }
 
   async function handleRemoveRequest(requestId) {
-    if (!user?.email || !authToken || !requestId || requestDeletingId) {
+    if (!user?.email || !requestId || requestDeletingId) {
       return;
     }
 
@@ -1309,7 +1077,7 @@ function App() {
     setRequestFeedback(null);
 
     try {
-      await deleteRequestAlert(requestId, authToken);
+      await deleteRequestAlert(requestId, user.email);
       setRequestHistory((currentRequests) => currentRequests.filter((request) => request.id !== requestId));
       await refreshAdminInsights();
       setRequestFeedback({
@@ -1342,7 +1110,7 @@ function App() {
   async function handleAdminSubmit(event) {
     event.preventDefault();
 
-    if (!isAdmin || !user?.email || !authToken) {
+    if (!isAdmin || !user?.email) {
       setAdminError(uiText.admin.accessDenied);
       return;
     }
@@ -1360,9 +1128,9 @@ function App() {
       };
 
       if (editingStoreId) {
-        await updateStoreRecord(editingStoreId, payload, authToken);
+        await updateStoreRecord(editingStoreId, payload, user.email);
       } else {
-        await createStoreRecord(payload, authToken);
+        await createStoreRecord(payload, user.email);
       }
 
       await refreshDashboard();
@@ -1383,7 +1151,7 @@ function App() {
   }
 
   async function handleDeleteStore(store) {
-    if (!isAdmin || !user?.email || !authToken) {
+    if (!isAdmin || !user?.email) {
       setAdminError(uiText.admin.accessDenied);
       return;
     }
@@ -1399,7 +1167,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      await deleteStoreRecord(store.id, authToken);
+      await deleteStoreRecord(store.id, user.email);
       await refreshDashboard();
       await refreshRequestHistory();
       await refreshAdminInsights();
@@ -1417,7 +1185,7 @@ function App() {
   }
 
   async function handleDeleteAdminUser(adminUser) {
-    if (!isAdmin || !user?.email || !authToken) {
+    if (!isAdmin || !user?.email) {
       setAdminError(uiText.admin.accessDenied);
       return;
     }
@@ -1433,7 +1201,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      await deleteAdminUser(adminUser.id, authToken);
+      await deleteAdminUser(adminUser.id, user.email);
       setAdminUsers((currentUsers) => currentUsers.filter((userItem) => userItem.id !== adminUser.id));
       await refreshAdminInsights();
       setAdminNotice(uiText.admin.userDeleted);
@@ -1449,7 +1217,7 @@ function App() {
   }
 
   async function handleDeleteAdminRequest(adminRequest) {
-    if (!isAdmin || !user?.email || !authToken) {
+    if (!isAdmin || !user?.email) {
       setAdminError(uiText.admin.accessDenied);
       return;
     }
@@ -1465,7 +1233,7 @@ function App() {
     setAdminNotice("");
 
     try {
-      await deleteAdminRequest(adminRequest.id, authToken);
+      await deleteAdminRequest(adminRequest.id, user.email);
       setAdminRequests((currentRequests) => currentRequests.filter((requestItem) => requestItem.id !== adminRequest.id));
       await refreshAdminInsights();
       setAdminNotice(uiText.admin.requestDeleted);
@@ -1487,7 +1255,7 @@ function App() {
       return;
     }
 
-    if (!user?.email || !authToken) {
+    if (!user?.email) {
       navigate("/profile", { state: { reason: "login", from: location.pathname }, replace: true });
       return;
     }
@@ -1515,8 +1283,7 @@ function App() {
         location: activeLocation,
         language,
         userEmail: user?.email || null,
-        sessionId: chatSessionId,
-        authToken
+        sessionId: chatSessionId
       });
 
       const botMessage = {
@@ -1680,7 +1447,7 @@ function App() {
           <>
             <h2>{recommendedStore.name}</h2>
             <p>
-              {[recommendedStore.city, recommendedStore.state].filter(Boolean).join(", ")} | {recommendedStore.location} | {recommendedStore.distanceFromUser ?? recommendedStore.distance} km | Rs. {recommendedStore.price}
+              {[recommendedStore.city, recommendedStore.state].filter(Boolean).join(", ")} | {recommendedStore.location} | {recommendedStore.distance} km | Rs. {recommendedStore.price}
             </p>
             <p className="summary-card__detail">
               {uiText.stockLabel}: {typeof recommendedStore.stockCount === "number" ? `${recommendedStore.stockCount} ${uiText.cylinders}` : uiText.available}
@@ -1981,19 +1748,6 @@ function App() {
                       error={profileError}
                       notice={profileNotice}
                       language={language}
-                      authMode={authMode}
-                      onAuthModeChange={setAuthMode}
-                      onGoogleLogin={handleGoogleLogin}
-                      googleLoading={googleLoading}
-                      otpRequired={otpRequired}
-                      otpCode={otpCode}
-                      onOtpChange={setOtpCode}
-                      onSendOtp={handleSendOtp}
-                      onVerifyOtp={handleVerifyOtp}
-                      otpSending={otpSending}
-                      otpVerifying={otpVerifying}
-                      authGreeting={user ? `Hello ${getPreferredDisplayName(user)}, welcome back 👋` : ""}
-                      locationStatus={locationStatus}
                       onChange={handleProfileInputChange}
                       onSubmit={handleProfileSubmit}
                       onReset={handleProfileReset}

@@ -34,7 +34,7 @@ async function listStores(request, response, next) {
 
 async function listNearbyStores(request, response, next) {
   try {
-    const { location, maxDistance, latitude, longitude } = request.query;
+    const { location, maxDistance } = request.query;
     console.log("GET /stores/nearby called");
 
     if (maxDistance !== undefined && Number.isNaN(Number(maxDistance))) {
@@ -42,22 +42,7 @@ async function listNearbyStores(request, response, next) {
       return;
     }
 
-    if (latitude !== undefined && Number.isNaN(Number(latitude))) {
-      response.status(400).json({ message: "latitude must be a valid number." });
-      return;
-    }
-
-    if (longitude !== undefined && Number.isNaN(Number(longitude))) {
-      response.status(400).json({ message: "longitude must be a valid number." });
-      return;
-    }
-
-    const stores = await getNearbyStores(
-      location,
-      maxDistance,
-      latitude === undefined ? null : Number(latitude),
-      longitude === undefined ? null : Number(longitude)
-    );
+    const stores = await getNearbyStores(location, maxDistance);
 
     if (!Array.isArray(stores) || stores.length === 0) {
       response.json({
@@ -80,11 +65,7 @@ async function listNearbyStores(request, response, next) {
 async function listAvailableStores(request, response, next) {
   try {
     console.log("GET /stores/available called");
-    const stores = await getAvailableStores(
-      request.query.location,
-      request.query.latitude === undefined ? null : Number(request.query.latitude),
-      request.query.longitude === undefined ? null : Number(request.query.longitude)
-    );
+    const stores = await getAvailableStores(request.query.location);
 
     if (!Array.isArray(stores) || stores.length === 0) {
       response.json({
@@ -107,11 +88,7 @@ async function listAvailableStores(request, response, next) {
 async function recommendStore(request, response, next) {
   try {
     console.log("GET /stores/recommend called");
-    const store = await getBestRecommendation(
-      request.query.location,
-      request.query.latitude === undefined ? null : Number(request.query.latitude),
-      request.query.longitude === undefined ? null : Number(request.query.longitude)
-    );
+    const store = await getBestRecommendation(request.query.location);
 
     if (!store) {
       console.warn(
@@ -143,11 +120,7 @@ async function recommendStore(request, response, next) {
 async function getStoreAnalytics(request, response, next) {
   try {
     console.log("GET /stores/analytics called");
-    const analytics = await getTrendAnalytics(
-      request.query.location || null,
-      request.query.latitude === undefined ? null : Number(request.query.latitude),
-      request.query.longitude === undefined ? null : Number(request.query.longitude)
-    );
+    const analytics = await getTrendAnalytics(request.query.location || null);
     response.json({
       success: true,
       ...analytics
@@ -162,7 +135,6 @@ async function createStoreEntry(request, response, next) {
   try {
     console.log("POST /stores called");
     const store = await createStore(request.body);
-    await processImmediateRequestNotifications();
     response.status(201).json({
       success: true,
       message: "Store created successfully.",

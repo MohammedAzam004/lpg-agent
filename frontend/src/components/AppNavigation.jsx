@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import CylinderLogo from "./CylinderLogo";
 
@@ -10,7 +9,6 @@ function AppNavigation({
   language = "en",
   onLanguageChange
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const navigationItems = [
     { to: "/", label: uiText.nav?.home || "Home" },
     { to: "/chat", label: uiText.nav?.chat || "Chat" },
@@ -26,22 +24,7 @@ function AppNavigation({
         <CylinderLogo />
       </div>
 
-      <button
-        type="button"
-        className="app-navbar__toggle"
-        aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-        aria-expanded={menuOpen}
-        onClick={() => setMenuOpen((currentState) => !currentState)}
-      >
-        <span />
-        <span />
-        <span />
-      </button>
-
-      <nav
-        className={menuOpen ? "app-navbar__links app-navbar__links--open" : "app-navbar__links"}
-        aria-label="Primary navigation"
-      >
+      <nav className="app-navbar__links" aria-label="Primary navigation">
         {navigationItems.map((item) => (
           <NavLink
             key={item.to}
@@ -49,14 +32,13 @@ function AppNavigation({
             className={({ isActive }) => (
               isActive ? "app-navbar__link app-navbar__link--active" : "app-navbar__link"
             )}
-            onClick={() => setMenuOpen(false)}
           >
             {item.label}
           </NavLink>
         ))}
       </nav>
 
-      <div className={menuOpen ? "app-navbar__meta app-navbar__meta--open" : "app-navbar__meta"}>
+      <div className="app-navbar__meta">
         <div className="app-navbar__language">
           <button
             type="button"

@@ -1,10 +1,9 @@
 const {
-  sendAppOverviewEmail,
   sendLoginGreetingEmail,
   sendPreferenceSummaryEmail,
   sendWelcomeEmail
 } = require("../utils/emailService");
-const { isAdminEmail } = require("../utils/adminAccess");
+const { isAdminEmail } = require("../utils/accessControl");
 const { getUserProfile, registerOrLoginUser, updateUserPreferences } = require("../services/userService");
 
 function buildUserPayload(user) {
@@ -16,9 +15,9 @@ function buildUserPayload(user) {
 
 function dispatchProfileEmails(mode, user, preferenceMode = "summary") {
   const emailTasks = mode === "register"
-    ? [sendWelcomeEmail(user), sendAppOverviewEmail(user)]
+    ? [sendWelcomeEmail(user), sendPreferenceSummaryEmail(user, preferenceMode)]
     : mode === "login"
-      ? [sendLoginGreetingEmail(user), sendAppOverviewEmail(user)]
+      ? [sendLoginGreetingEmail(user), sendPreferenceSummaryEmail(user, preferenceMode)]
       : [sendPreferenceSummaryEmail(user, preferenceMode)];
 
   Promise.allSettled(emailTasks)

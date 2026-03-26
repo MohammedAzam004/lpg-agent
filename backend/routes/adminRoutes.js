@@ -6,12 +6,11 @@ const {
   removeRequest,
   removeUser
 } = require("../controllers/adminController");
-const { verifyFirebaseToken } = require("../middleware/verifyFirebaseToken");
 const { requireAdminAccess } = require("../utils/accessControl");
 
 const router = express.Router();
 
-router.use(verifyFirebaseToken, requireAdminAccess);
+router.use(requireAdminAccess);
 
 router.get("/insights", getInsights);
 router.get("/users", listUsers);

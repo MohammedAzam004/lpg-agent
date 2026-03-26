@@ -1,7 +1,7 @@
 const fs = require("fs/promises");
 const path = require("path");
 const { randomUUID } = require("crypto");
-const { isAdminEmail } = require("../utils/adminAccess");
+const { isAdminEmail } = require("../utils/accessControl");
 
 const usersFilePath = path.join(__dirname, "..", "data", "users.json");
 
@@ -36,11 +36,6 @@ function normalizeOptionalNumber(value) {
   return Number.isFinite(parsedValue) ? parsedValue : Number.NaN;
 }
 
-function normalizeOptionalString(value, fallbackValue = null) {
-  const normalizedValue = value?.toString().trim();
-  return normalizedValue || fallbackValue;
-}
-
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
 }
@@ -49,19 +44,10 @@ function isValidPhone(phone) {
   return /^\d{10}$/.test(normalizePhone(phone));
 }
 
-function createDisplayNameFromEmail(email = "") {
-  const fallbackName = email.split("@")[0] || "LPG User";
-  return fallbackName
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(" ");
-}
-
 async function readUsers() {
   try {
     const rawContent = await fs.readFile(usersFilePath, "utf-8");
-    const parsedContent = JSON.parse(rawContent.replace(/^\uFEFF/, ""));
+    const parsedContent = JSON.parse(rawContent);
 
     if (!Array.isArray(parsedContent)) {
       console.error("[user-service] Invalid users.json structure. Expected an array.");
@@ -102,17 +88,10 @@ function sanitizeUser(user) {
     phone: user.phone,
     address: user.address || "",
     createdAt: user.createdAt,
-    lastLoginAt: user.lastLoginAt || null,
-    firebaseUid: user.firebaseUid || null,
-    authProvider: user.authProvider || "password",
-    emailVerified: Boolean(user.emailVerified),
     maxPrice: user.maxPrice ?? null,
     maxDistance: user.maxDistance ?? null,
     notificationsEnabled: user.notificationsEnabled !== false,
     preferredLanguage: normalizeLanguage(user.preferredLanguage),
-    latitude: user.latitude ?? null,
-    longitude: user.longitude ?? null,
-    locationUpdatedAt: user.locationUpdatedAt || null,
     isAdmin: isAdminEmail(user.email)
   };
 }
@@ -184,8 +163,6 @@ async function registerOrLoginUser(payload = {}) {
   const existingUser = users.find((user) => normalizeEmail(user.email) === email);
 
   if (existingUser) {
-    existingUser.lastLoginAt = new Date().toISOString();
-    await writeUsers(users);
     console.log(`[user-service] Existing user login for ${email}`);
     return {
       action: "login",
@@ -201,25 +178,17 @@ async function registerOrLoginUser(payload = {}) {
     throw createHttpError("Phone number must be exactly 10 digits.");
   }
 
-  const now = new Date().toISOString();
   const newUser = {
     id: randomUUID(),
     name,
     email,
     phone,
     address,
-    createdAt: now,
-    lastLoginAt: now,
-    firebaseUid: null,
-    authProvider: "legacy",
-    emailVerified: false,
+    createdAt: new Date().toISOString(),
     maxPrice,
     maxDistance,
     notificationsEnabled,
-    preferredLanguage,
-    latitude: null,
-    longitude: null,
-    locationUpdatedAt: null
+    preferredLanguage
   };
 
   users.push(newUser);
@@ -229,93 +198,6 @@ async function registerOrLoginUser(payload = {}) {
   return {
     action: "register",
     user: sanitizeUser(newUser)
-  };
-}
-
-async function syncFirebaseUser(payload = {}) {
-  const email = normalizeEmail(payload.email);
-  const firebaseUid = normalizeOptionalString(payload.firebaseUid);
-
-  if (!isValidEmail(email)) {
-    throw createHttpError("Email must be a valid format.");
-  }
-
-  if (!firebaseUid) {
-    throw createHttpError("Firebase user id is required.");
-  }
-
-  const users = await readUsers();
-  const existingUserIndex = users.findIndex((user) => (
-    user.firebaseUid === firebaseUid || normalizeEmail(user.email) === email
-  ));
-  const existingUser = existingUserIndex >= 0 ? users[existingUserIndex] : null;
-  const maxPrice = payload.maxPrice === undefined
-    ? existingUser?.maxPrice ?? null
-    : normalizeOptionalNumber(payload.maxPrice);
-  const maxDistance = payload.maxDistance === undefined
-    ? existingUser?.maxDistance ?? null
-    : normalizeOptionalNumber(payload.maxDistance);
-  const latitude = payload.latitude === undefined
-    ? existingUser?.latitude ?? null
-    : normalizeOptionalNumber(payload.latitude);
-  const longitude = payload.longitude === undefined
-    ? existingUser?.longitude ?? null
-    : normalizeOptionalNumber(payload.longitude);
-
-  if (Number.isNaN(maxPrice)) {
-    throw createHttpError("Max price must be a valid number.");
-  }
-
-  if (Number.isNaN(maxDistance)) {
-    throw createHttpError("Max distance must be a valid number.");
-  }
-
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-    throw createHttpError("Location coordinates must be valid numbers.");
-  }
-
-  const now = new Date().toISOString();
-  const nextUser = {
-    id: existingUser?.id || randomUUID(),
-    createdAt: existingUser?.createdAt || now,
-    name: normalizeOptionalString(payload.name, existingUser?.name || createDisplayNameFromEmail(email)),
-    email,
-    phone: normalizeOptionalString(normalizePhone(payload.phone), existingUser?.phone || ""),
-    address: normalizeOptionalString(normalizeAddress(payload.address), existingUser?.address || ""),
-    lastLoginAt: now,
-    firebaseUid,
-    authProvider: normalizeOptionalString(payload.authProvider, existingUser?.authProvider || "password"),
-    emailVerified: payload.emailVerified === undefined
-      ? Boolean(existingUser?.emailVerified)
-      : Boolean(payload.emailVerified),
-    maxPrice,
-    maxDistance,
-    notificationsEnabled: payload.notificationsEnabled === undefined
-      ? existingUser?.notificationsEnabled !== false
-      : payload.notificationsEnabled !== false,
-    preferredLanguage: payload.preferredLanguage === undefined
-      ? normalizeLanguage(existingUser?.preferredLanguage)
-      : normalizeLanguage(payload.preferredLanguage),
-    latitude,
-    longitude,
-    locationUpdatedAt: latitude != null && longitude != null
-      ? now
-      : existingUser?.locationUpdatedAt || null
-  };
-
-  const isNewUser = existingUserIndex === -1;
-
-  if (existingUserIndex >= 0) {
-    users[existingUserIndex] = nextUser;
-  } else {
-    users.push(nextUser);
-  }
-
-  await writeUsers(users);
-  console.log(`[user-service] Synced Firebase user ${email} (${firebaseUid}).`);
-  return {
-    user: sanitizeUser(nextUser),
-    isNewUser
   };
 }
 
@@ -359,41 +241,6 @@ async function updateUserPreferences(payload = {}) {
   return sanitizeUser(users[userIndex]);
 }
 
-async function updateUserLocation(payload = {}) {
-  const email = normalizeEmail(payload.email);
-
-  if (!isValidEmail(email)) {
-    throw createHttpError("Email must be a valid format.");
-  }
-
-  const latitude = normalizeOptionalNumber(payload.latitude);
-  const longitude = normalizeOptionalNumber(payload.longitude);
-
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-    throw createHttpError("Location coordinates must be valid numbers.");
-  }
-
-  const users = await readUsers();
-  const userIndex = users.findIndex((user) => normalizeEmail(user.email) === email);
-
-  if (userIndex === -1) {
-    throw createHttpError("User profile not found.", 404);
-  }
-
-  users[userIndex] = {
-    ...users[userIndex],
-    latitude,
-    longitude,
-    locationUpdatedAt: latitude != null && longitude != null
-      ? new Date().toISOString()
-      : users[userIndex].locationUpdatedAt || null
-  };
-
-  await writeUsers(users);
-  console.log(`[user-service] Updated saved location for ${email}`);
-  return sanitizeUser(users[userIndex]);
-}
-
 async function deleteUserById(userId) {
   const normalizedUserId = userId?.toString().trim();
 
@@ -433,7 +280,5 @@ module.exports = {
   getAllUsers,
   getUserProfile,
   registerOrLoginUser,
-  syncFirebaseUser,
-  updateUserLocation,
   updateUserPreferences
 };

@@ -5,7 +5,6 @@ const storesFilePath = path.join(__dirname, "..", "data", "stores.json");
 const previousStoresFilePath = path.join(__dirname, "..", "data", "previousStores.json");
 const bookingsFilePath = path.join(__dirname, "..", "data", "bookings.json");
 const requestsFilePath = path.join(__dirname, "..", "data", "requests.json");
-const otpSessionsFilePath = path.join(__dirname, "..", "data", "otpSessions.json");
 
 function flattenStoresHierarchy(records) {
   if (!Array.isArray(records) || !records.length) {
@@ -39,7 +38,7 @@ function flattenStoresHierarchy(records) {
 async function readJsonFile(filePath, fallbackValue = []) {
   try {
     const rawContent = await fs.readFile(filePath, "utf-8");
-    const parsedContent = JSON.parse(rawContent.replace(/^\uFEFF/, ""));
+    const parsedContent = JSON.parse(rawContent);
 
     if (!Array.isArray(parsedContent)) {
       console.error(`[data] Invalid JSON structure in ${filePath}. Expected an array.`);
@@ -100,23 +99,13 @@ async function saveRequests(requests) {
   return writeJsonFile(requestsFilePath, requests);
 }
 
-async function getOtpSessions() {
-  return readJsonFile(otpSessionsFilePath, []);
-}
-
-async function saveOtpSessions(otpSessions) {
-  return writeJsonFile(otpSessionsFilePath, otpSessions);
-}
-
 module.exports = {
   getBookings,
-  getOtpSessions,
   getRequests,
   getStoreHierarchy,
   getStores,
   getPreviousStores,
   saveBookings,
-  saveOtpSessions,
   saveRequests,
   saveStoreHierarchy,
   savePreviousStores
